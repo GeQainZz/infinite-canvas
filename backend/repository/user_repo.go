@@ -31,6 +31,15 @@ func (r *UserRepo) FindByUsername(tenantID uint, username string) (*model.User, 
 	return &user, nil
 }
 
+func (r *UserRepo) FindByUsernameGlobal(username string) (*model.User, error) {
+	var user model.User
+	err := r.db.Where("username = ?", username).First(&user).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
 func (r *UserRepo) List(tenantID uint, page, pageSize int) ([]model.User, int64, error) {
 	var users []model.User
 	var total int64

@@ -99,7 +99,7 @@ func (s *AuthService) createUserAndToken(tenantID uint, username, password strin
 }
 
 func (s *AuthService) Login(input LoginInput) (*LoginResult, error) {
-	user, err := s.userRepo.FindByUsername(0, input.Username)
+	user, err := s.userRepo.FindByUsernameGlobal(input.Username)
 	if err != nil {
 		return nil, errors.New("invalid username or password")
 	}
