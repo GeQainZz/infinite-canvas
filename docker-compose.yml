@@ -3,7 +3,7 @@ services:
     image: ghcr.io/basketikun/infinite-canvas:latest
     container_name: infinite-canvas
     ports:
-      - "3000:3000"
+      - "3001:3001"
     restart: unless-stopped
 
   mysql:
@@ -31,12 +31,12 @@ services:
       dockerfile: Dockerfile
     container_name: ic-backend
     environment:
-      PORT: "8080"
+      PORT: "18080"
       DB_DSN: root:root@tcp(mysql:3306)/infinite_canvas?charset=utf8mb4&parseTime=True&loc=Local
       JWT_KEY: change-me-in-production
       REDIS_ADDR: redis:6379
     ports:
-      - "8080:8080"
+      - "18080:18080"
     depends_on:
       - mysql
       - redis
