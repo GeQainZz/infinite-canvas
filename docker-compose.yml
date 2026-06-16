@@ -5,3 +5,42 @@ services:
     ports:
       - "3000:3000"
     restart: unless-stopped
+
+  mysql:
+    image: mysql:8.4
+    container_name: ic-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: infinite_canvas
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: ic-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ic-backend
+    environment:
+      PORT: "8080"
+      DB_DSN: root:root@tcp(mysql:3306)/infinite_canvas?charset=utf8mb4&parseTime=True&loc=Local
+      JWT_KEY: change-me-in-production
+      REDIS_ADDR: redis:6379
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mysql
+      - redis
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
