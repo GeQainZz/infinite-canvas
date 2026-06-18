@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button, Form, Input, App } from "antd";
+import Image from "next/image";
 import { login } from "@/services/api/auth";
 import { setStoredToken } from "@/services/api/client";
 import { useUserStore } from "@/stores/use-user-store";
@@ -32,6 +33,9 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-full items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm">
+        <div className="mb-6 flex justify-center">
+          <Image src="/logo.svg" alt="无限画布" width={120} height={120} className="rounded-xl" />
+        </div>
         <h1 className="mb-8 text-center text-2xl font-semibold text-stone-950 dark:text-stone-100">登录</h1>
         <Form layout="vertical" onFinish={onFinish} autoComplete="off">
           <Form.Item name="username" rules={[{ required: true, message: "请输入用户名" }]}>

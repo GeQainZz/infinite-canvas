@@ -8,11 +8,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler.AuthHandler, adminHandler *handler.AdminHandler, userHandler *handler.UserHandler, creditHandler *handler.CreditHandler, generateHandler *handler.GenerateHandler, apiConfigHandler *handler.ApiConfigHandler, proxyHandler *handler.ProxyHandler, canvasHandler *handler.CanvasHandler, rechargeHandler *handler.RechargeHandler) {
+func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler.AuthHandler, adminHandler *handler.AdminHandler, userHandler *handler.UserHandler, creditHandler *handler.CreditHandler, generateHandler *handler.GenerateHandler, apiConfigHandler *handler.ApiConfigHandler, proxyHandler *handler.ProxyHandler, canvasHandler *handler.CanvasHandler, rechargeHandler *handler.RechargeHandler, captchaHandler *handler.CaptchaHandler) {
 	r.Use(middleware.Cors())
 
 	api := r.Group("/api")
 
+	api.GET("/auth/captcha", captchaHandler.Generate)
 	api.POST("/auth/register", authHandler.Register)
 	api.POST("/auth/login", authHandler.Login)
 
@@ -20,13 +21,12 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 	auth.Use(middleware.AuthRequired(authService))
 	{
 		auth.GET("/auth/me", authHandler.Me)
+		auth.PUT("/auth/password", authHandler.ChangePassword)
+		auth.PUT("/auth/profile", authHandler.UpdateProfile)
 
 		auth.GET("/credits/balance", creditHandler.GetBalance)
 		auth.GET("/credits/transactions", creditHandler.GetTransactions)
 		auth.GET("/credits/estimate", creditHandler.EstimateCost)
-
-		auth.GET("/api-config", apiConfigHandler.Get)
-		auth.POST("/api-config", apiConfigHandler.Save)
 
 		auth.POST("/generate/image", generateHandler.Image)
 		auth.POST("/generate/text", generateHandler.Text)
@@ -37,14 +37,12 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 		auth.GET("/proxy", proxyHandler.ProxyGet)
 		auth.GET("/proxy/*path", proxyHandler.ProxyGetPath)
 
-		// Canvas cloud storage
 		auth.POST("/canvas/save", canvasHandler.Save)
 		auth.GET("/canvas/:id", canvasHandler.Load)
 		auth.GET("/canvas", canvasHandler.List)
 		auth.DELETE("/canvas/:id", canvasHandler.Delete)
 		auth.POST("/canvas/delete-batch", canvasHandler.DeleteBatch)
 
-		// User recharge
 		auth.GET("/recharge/payouts", rechargeHandler.ListPayouts)
 		auth.POST("/recharge/order", rechargeHandler.CreateOrder)
 		auth.GET("/recharge/orders", rechargeHandler.ListMyOrders)
@@ -53,6 +51,8 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 		admin.Use(middleware.AdminRequired())
 		{
 			admin.GET("/users", userHandler.List)
+			admin.GET("/api-config", apiConfigHandler.Get)
+			admin.POST("/api-config", apiConfigHandler.Save)
 			admin.GET("/credits/pricing", creditHandler.ListPricing)
 			admin.POST("/credits/pricing", creditHandler.SavePricing)
 			admin.DELETE("/credits/pricing/:id", creditHandler.DeletePricing)

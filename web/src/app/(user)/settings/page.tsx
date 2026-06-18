@@ -1,431 +1,167 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  App,
-  Button,
-  Card,
-  Form,
-  Input,
-  InputNumber,
-  message,
-  Modal,
-  Popconfirm,
-  Select,
-  Space,
-  Table,
-  Tabs,
-  Tag,
-} from "antd";
-import { Plus, Trash2 } from "lucide-react";
-import {
-  getApiConfig,
-  saveApiConfig,
-  type ApiConfigInfo,
-} from "@/services/api/api-config";
-import {
-  listPricing,
-  savePricing,
-  deletePricing,
-  rechargeCredits,
-  listUsers,
-  type PricingItem,
-  type UserItem,
-} from "@/services/api/pricing";
-import { getBalance } from "@/services/api/credits";
+import { App, Button, Card, Form, Input, Tabs, Avatar } from "antd";
+import { User, Key } from "lucide-react";
+import { changePassword, updateProfile } from "@/services/api/auth";
 import { useUserStore } from "@/stores/use-user-store";
 
 export default function SettingsPage() {
   const user = useUserStore((s) => s.user);
-  const isAdmin = user?.role === "tenant_admin" || user?.role === "super_admin";
 
   const tabItems = [
-    { key: "api", label: "API 配置" },
-    { key: "pricing", label: "积分定价" },
-    { key: "recharge", label: "积分充值" },
+    { key: "profile", label: "个人资料", icon: <User className="size-4" /> },
+    { key: "password", label: "修改密码", icon: <Key className="size-4" /> },
   ];
 
   return (
-    <main className="mx-auto max-w-4xl overflow-y-auto px-6 py-8">
+    <main className="mx-auto max-w-2xl overflow-y-auto px-6 py-8">
       <h1 className="mb-6 text-2xl font-semibold text-stone-950 dark:text-stone-100">
-        系统设置
+        个人中心
       </h1>
       <Tabs
         items={tabItems.map((tab) => ({
           key: tab.key,
-          label: tab.label,
-          children: (
-            <TabContent tabKey={tab.key} />
+          label: (
+            <span className="flex items-center gap-2">
+              {tab.icon}
+              {tab.label}
+            </span>
           ),
+          children: tab.key === "profile" ? <ProfileTab /> : <PasswordTab />,
         }))}
       />
     </main>
   );
 }
 
-function TabContent({ tabKey }: { tabKey: string }) {
-  const [apiConfig, setApiConfig] = useState<ApiConfigInfo | null>(null);
-  const [apiLoading, setApiLoading] = useState(false);
-  const [pricingItems, setPricingItems] = useState<PricingItem[]>([]);
-  const [pricingLoading, setPricingLoading] = useState(false);
-  const [pricingModalOpen, setPricingModalOpen] = useState(false);
-  const [editingPricing, setEditingPricing] = useState<PricingItem | null>(null);
-  const [pricingForm] = Form.useForm();
-  const [rechargeForm] = Form.useForm();
-  const [rechargeLoading, setRechargeLoading] = useState(false);
-  const [users, setUsers] = useState<UserItem[]>([]);
-  const [usersLoading, setUsersLoading] = useState(false);
+function ProfileTab() {
+  const user = useUserStore((s) => s.user);
+  const fetchUser = useUserStore((s) => s.fetchUser);
   const { message } = App.useApp();
+  const [loading, setLoading] = useState(false);
+  const [form] = Form.useForm();
 
   useEffect(() => {
-    if (tabKey === "api") fetchApiConfig();
-    if (tabKey === "pricing") fetchPricing();
-    if (tabKey === "recharge") fetchUsers();
-  }, [tabKey]);
-
-  const fetchApiConfig = async () => {
-    setApiLoading(true);
-    try {
-      const config = await getApiConfig();
-      setApiConfig(config);
-    } catch {
-      setApiConfig(null);
-    } finally {
-      setApiLoading(false);
+    if (user) {
+      form.setFieldsValue({
+        display_name: user.displayName || user.username,
+        avatar_url: user.avatarUrl || "",
+      });
     }
-  };
+  }, [user, form]);
 
-  const handleApiSave = async (values: { base_url: string; api_key: string }) => {
+  const handleSave = async (values: { display_name: string; avatar_url: string }) => {
+    setLoading(true);
     try {
-      await saveApiConfig(values);
-      message.success("API 配置已保存");
-      fetchApiConfig();
+      await updateProfile(values);
+      await fetchUser();
+      message.success("个人资料已更新");
     } catch (err: any) {
-      message.error(err?.message || "保存失败");
-    }
-  };
-
-  const fetchPricing = async () => {
-    setPricingLoading(true);
-    try {
-      const items = await listPricing();
-      setPricingItems(items || []);
-    } catch {
-      setPricingItems([]);
+      message.error(err?.message || "更新失败");
     } finally {
-      setPricingLoading(false);
+      setLoading(false);
     }
   };
 
-  const handlePricingSave = async (values: PricingItem) => {
-    try {
-      await savePricing(values);
-      message.success("定价已保存");
-      setPricingModalOpen(false);
-      fetchPricing();
-    } catch (err: any) {
-      message.error(err?.message || "保存失败");
-    }
-  };
-
-  const handlePricingDelete = async (id: number) => {
-    try {
-      await deletePricing(id);
-      message.success("已删除");
-      fetchPricing();
-    } catch (err: any) {
-      message.error(err?.message || "删除失败");
-    }
-  };
-
-    const [transactions, setTransactions] = useState<any[]>([]);
-  const [transactionsLoading, setTransactionsLoading] = useState(false);
-
-  const fetchTransactions = async () => {
-    setTransactionsLoading(true);
-    try {
-      const result = await getTransactions(1, 50);
-      setTransactions(result.items || []);
-    } catch {
-      setTransactions([]);
-    } finally {
-      setTransactionsLoading(false);
-    }
-  };
-
-  const fetchUsers = async () => {
-    setUsersLoading(true);
-    try {
-      const result = await listUsers();
-      setUsers(result.items || []);
-    } catch {
-      setUsers([]);
-    } finally {
-      setUsersLoading(false);
-    }
-  };
-
-  const handleRecharge = async (values: { user_id: number; amount: number; note?: string }) => {
-    setRechargeLoading(true);
-    try {
-      const result = await rechargeCredits(values);
-      message.success(`充值成功！用户 ${result.user_id} 余额: ${result.balance}`);
-      rechargeForm.resetFields();
-    } catch (err: any) {
-      message.error(err?.message || "充值失败");
-    } finally {
-      setRechargeLoading(false);
-    }
-  };
-
-  if (tabKey === "api") {
-    return (
-      <Card loading={apiLoading}>
-        <Form
-          layout="vertical"
-          onFinish={handleApiSave}
-          initialValues={{
-            base_url: apiConfig?.base_url || "",
-            api_key: "",
-          }}
-          key={apiConfig?.base_url || "empty"}
-        >
-          <Form.Item
-            name="base_url"
-            label="上游 API 地址"
-            rules={[{ required: true, message: "请输入 API 基础地址" }]}
-            extra="例如: https://api.openai.com"
-          >
-            <Input placeholder="https://api.openai.com" />
-          </Form.Item>
-          <Form.Item
-            name="api_key"
-            label="API Key"
-            rules={[{ required: true, message: "请输入 API Key" }]}
-            extra={apiConfig?.has_key ? "已保存 API Key，重新输入将覆盖" : "首次配置需要输入 API Key"}
-          >
-            <Input.Password placeholder="sk-..." />
-          </Form.Item>
-          <Button type="primary" htmlType="submit">
-            保存配置
-          </Button>
-        </Form>
-        {apiConfig && (
-          <div className="mt-4 text-sm text-stone-500">
-            当前已配置 API 地址: {apiConfig.base_url}
-            {apiConfig.has_key ? "（已设置 Key）" : "（未设置 Key）"}
+  return (
+    <Card>
+      <div className="mb-6 flex items-center gap-4">
+        <Avatar size={64} src={user?.avatarUrl || undefined}>
+          {(user?.displayName || user?.username || "U")[0]?.toUpperCase()}
+        </Avatar>
+        <div>
+          <div className="text-lg font-semibold">{user?.displayName || user?.username}</div>
+          <div className="text-sm text-stone-500">@{user?.username}</div>
+          <div className="text-xs text-stone-400">
+            {user?.role === "super_admin"
+              ? "超级管理员"
+              : user?.role === "tenant_admin"
+              ? "管理员"
+              : "普通用户"}
           </div>
-        )}
-      </Card>
-    );
-  }
-
-  if (tabKey === "pricing") {
-    const columns = [
-      { title: "模型名称", dataIndex: "model", key: "model" },
-      {
-        title: "积分/次",
-        dataIndex: "credits_per_unit",
-        key: "credits_per_unit",
-      },
-      {
-        title: "计费单位",
-        dataIndex: "unit_type",
-        key: "unit_type",
-        render: (v: string) => {
-          const labels: Record<string, string> = {
-            per_image: "每张图片",
-            per_video: "每个视频",
-            per_token: "每 Token",
-          };
-          return <Tag>{labels[v] || v}</Tag>;
-        },
-      },
-      {
-        title: "操作",
-        key: "actions",
-        render: (_: any, record: PricingItem) => (
-          <Space>
-            <Button
-              size="small"
-              type="link"
-              onClick={() => {
-                setEditingPricing(record);
-                pricingForm.setFieldsValue(record);
-                setPricingModalOpen(true);
-              }}
-            >
-              编辑
-            </Button>
-            <Popconfirm
-              title="确定删除？"
-              onConfirm={() => handlePricingDelete(record.id!)}
-            >
-              <Button size="small" type="link" danger>
-                删除
-              </Button>
-            </Popconfirm>
-          </Space>
-        ),
-      },
-    ];
-
-    return (
-      <Card
-        title="模型定价"
-        extra={
-          <Button
-            type="primary"
-            icon={<Plus className="size-4" />}
-            onClick={() => {
-              setEditingPricing(null);
-              pricingForm.resetFields();
-              setPricingModalOpen(true);
-            }}
-          >
-            新增定价
-          </Button>
-        }
-        loading={pricingLoading}
-      >
-        <Table
-          dataSource={pricingItems}
-          columns={columns}
-          rowKey="id"
-          pagination={false}
-          locale={{ emptyText: "暂无定价配置" }}
-        />
-
-        <Modal
-          title={editingPricing ? "编辑定价" : "新增定价"}
-          open={pricingModalOpen}
-          onCancel={() => setPricingModalOpen(false)}
-          onOk={() => pricingForm.submit()}
+        </div>
+      </div>
+      <Form form={form} layout="vertical" onFinish={handleSave}>
+        <Form.Item
+          name="display_name"
+          label="显示名称"
+          rules={[{ required: true, message: "请输入显示名称" }]}
         >
-          <Form form={pricingForm} layout="vertical" onFinish={handlePricingSave}>
-            <Form.Item
-              name="model"
-              label="模型名称"
-              rules={[{ required: true, message: "请输入模型名称" }]}
-            >
-              <Input placeholder="例如: gpt-image-2" />
-            </Form.Item>
-            <Form.Item
-              name="credits_per_unit"
-              label="每次消耗积分"
-              rules={[{ required: true, message: "请输入积分" }]}
-            >
-              <InputNumber min={1} style={{ width: "100%" }} />
-            </Form.Item>
-            <Form.Item name="unit_type" label="计费单位" initialValue="per_image">
-              <Select
-                options={[
-                  { label: "每张图片", value: "per_image" },
-                  { label: "每个视频", value: "per_video" },
-                  { label: "每 Token", value: "per_token" },
-                ]}
-              />
-            </Form.Item>
-          </Form>
-        </Modal>
-      </Card>
-    );
-  }
+          <Input placeholder="输入昵称" />
+        </Form.Item>
+        <Form.Item name="avatar_url" label="头像链接">
+          <Input placeholder="https://example.com/avatar.jpg（可选）" />
+        </Form.Item>
+        <Button type="primary" htmlType="submit" loading={loading}>
+          保存修改
+        </Button>
+      </Form>
+    </Card>
+  );
+}
 
-  if (tabKey === "recharge") {
-    const userOptions = users.map((u) => ({
-      label: `${u.display_name || u.username} (${u.username})`,
-      value: u.id,
-    }));
+function PasswordTab() {
+  const { message } = App.useApp();
+  const [loading, setLoading] = useState(false);
+  const [form] = Form.useForm();
 
-    return (
-      <Card title="用户充值">
-        <Form
-          form={rechargeForm}
-          layout="vertical"
-          onFinish={handleRecharge}
-          style={{ maxWidth: 400 }}
+  const handleChange = async (values: {
+    old_password: string;
+    new_password: string;
+    confirm_password: string;
+  }) => {
+    if (values.new_password !== values.confirm_password) {
+      message.error("两次输入的新密码不一致");
+      return;
+    }
+    if (values.new_password.length < 6) {
+      message.error("新密码至少需要6个字符");
+      return;
+    }
+    setLoading(true);
+    try {
+      await changePassword({
+        old_password: values.old_password,
+        new_password: values.new_password,
+      });
+      message.success("密码修改成功，请重新登录");
+      form.resetFields();
+    } catch (err: any) {
+      message.error(err?.message || "修改失败");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Card>
+      <Form form={form} layout="vertical" onFinish={handleChange} style={{ maxWidth: 400 }}>
+        <Form.Item
+          name="old_password"
+          label="当前密码"
+          rules={[{ required: true, message: "请输入当前密码" }]}
         >
-          <Form.Item
-            name="user_id"
-            label="选择用户"
-            rules={[{ required: true, message: "请选择用户" }]}
-          >
-            <Select
-              showSearch
-              placeholder="搜索用户"
-              options={userOptions}
-              filterOption={(input, option) =>
-                (option?.label as string)?.toLowerCase().includes(input.toLowerCase())
-              }
-            />
-          </Form.Item>
-          <Form.Item
-            name="amount"
-            label="充值积分"
-            rules={[{ required: true, message: "请输入积分数量" }]}
-          >
-            <InputNumber min={1} max={100000} style={{ width: "100%" }} placeholder="100" />
-          </Form.Item>
-          <Form.Item name="note" label="备注">
-            <Input placeholder="可选，如：活动赠送" />
-          </Form.Item>
-          <Button
-            type="primary"
-            htmlType="submit"
-            loading={rechargeLoading}
-          >
-            确认充值
-          </Button>
-        </Form>
-      </Card>
-    );
-  }
-
-  if (tabKey === "transactions") {
-    const txColumns = [
-      {
-        title: "类型",
-        dataIndex: "type",
-        key: "type",
-        render: (v: string) => {
-          const labels: Record<string, { color: string; text: string }> = {
-            earn: { color: "green", text: "收入" },
-            spend: { color: "red", text: "消费" },
-            refund: { color: "blue", text: "退款" },
-            adjust: { color: "orange", text: "调整" },
-          };
-          const info = labels[v] || { color: "default", text: v };
-          return <Tag color={info.color}>{info.text}</Tag>;
-        },
-      },
-      { title: "数量", dataIndex: "amount", key: "amount" },
-      {
-        title: "余额",
-        dataIndex: "balance_after",
-        key: "balance_after",
-      },
-      { title: "说明", dataIndex: "note", key: "note" },
-      {
-        title: "时间",
-        dataIndex: "created_at",
-        key: "created_at",
-        render: (v: string) => new Date(v).toLocaleString("zh-CN"),
-      },
-    ];
-
-    return (
-      <Card loading={transactionsLoading}>
-        <Table
-          dataSource={transactions}
-          columns={txColumns}
-          rowKey="id"
-          pagination={false}
-          locale={{ emptyText: "暂无积分记录" }}
-        />
-      </Card>
-    );
-  }
-
-  return null;
+          <Input.Password placeholder="当前密码" />
+        </Form.Item>
+        <Form.Item
+          name="new_password"
+          label="新密码"
+          rules={[{ required: true, min: 6, message: "新密码至少需要6个字符" }]}
+        >
+          <Input.Password placeholder="新密码" />
+        </Form.Item>
+        <Form.Item
+          name="confirm_password"
+          label="确认新密码"
+          rules={[{ required: true, message: "请再次输入新密码" }]}
+        >
+          <Input.Password placeholder="确认新密码" />
+        </Form.Item>
+        <Button type="primary" htmlType="submit" loading={loading}>
+          修改密码
+        </Button>
+      </Form>
+    </Card>
+  );
 }

@@ -4,6 +4,7 @@ import { Drawer } from "antd";
 import Link from "next/link";
 
 import { navigationTools, type NavigationToolSlug } from "@/constant/navigation-tools";
+import { useUserStore } from "@/stores/use-user-store";
 import { cn } from "@/lib/utils";
 
 type MobileNavDrawerProps = {
@@ -13,6 +14,9 @@ type MobileNavDrawerProps = {
 };
 
 export function MobileNavDrawer({ open, activeToolSlug, onClose }: MobileNavDrawerProps) {
+    const user = useUserStore((s) => s.user);
+    const isAdmin = user?.role === "super_admin" || user?.role === "tenant_admin";
+    const filteredTools = navigationTools.filter((t) => !(t as any).adminOnly || isAdmin);
     return (
         <Drawer title="导航" placement="left" size={280} open={open} onClose={onClose} className="md:hidden">
             <div className="space-y-1">

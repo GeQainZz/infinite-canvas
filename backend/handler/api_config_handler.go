@@ -2,6 +2,8 @@ package handler
 
 import (
 	"github.com/gin-gonic/gin"
+	"infinite-canvas-server/crypto"
+	"infinite-canvas-server/config"
 	"infinite-canvas-server/model"
 	"infinite-canvas-server/repository"
 	"infinite-canvas-server/service"
@@ -9,10 +11,11 @@ import (
 
 type ApiConfigHandler struct {
 	apiConfigRepo *repository.ApiConfigRepo
+	cfg           *config.Config
 }
 
-func NewApiConfigHandler(apiConfigRepo *repository.ApiConfigRepo) *ApiConfigHandler {
-	return &ApiConfigHandler{apiConfigRepo: apiConfigRepo}
+func NewApiConfigHandler(apiConfigRepo *repository.ApiConfigRepo, cfg *config.Config) *ApiConfigHandler {
+	return &ApiConfigHandler{apiConfigRepo: apiConfigRepo, cfg: cfg}
 }
 
 type SaveApiConfigInput struct {
@@ -40,10 +43,17 @@ func (h *ApiConfigHandler) Save(c *gin.Context) {
 		model.Fail(c, 400, "无效的请求参数")
 		return
 	}
+
+	encryptedKey, err := crypto.Encrypt(h.cfg.ApiKeyEncryptKey, input.ApiKey)
+	if err != nil {
+		model.Fail(c, 500, "加密 API Key 失败")
+		return
+	}
+
 	cfg := &model.TenantApiConfig{
 		TenantID: claims.TenantID,
 		BaseUrl:  input.BaseUrl,
-		ApiKey:   input.ApiKey,
+		ApiKey:   encryptedKey,
 	}
 	if err := h.apiConfigRepo.Save(cfg); err != nil {
 		model.Fail(c, 500, err.Error())

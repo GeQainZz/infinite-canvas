@@ -12,10 +12,8 @@ services:
     image: mysql:8.4
     container_name: ic-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: root
+      MYSQL_ROOT_PASSWORD: icMysqlR00t#2026!
       MYSQL_DATABASE: infinite_canvas
-    ports:
-      - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     restart: unless-stopped
@@ -38,9 +36,11 @@ services:
     restart: unless-stopped
     environment:
       PORT: "18080"
-      DB_DSN: root:root@tcp(mysql:3306)/infinite_canvas?charset=utf8mb4&parseTime=True&loc=Local
-      JWT_KEY: change-me-in-production
+      DB_DSN: root:icMysqlR00t#2026!@tcp(mysql:3306)/infinite_canvas?charset=utf8mb4&parseTime=True&loc=Local
+      JWT_KEY: ic-jwt-prod-k8xR2mP9vL5nQ7wY3aF1bC6dE0gH4jM
+      REGISTRATION_CREDITS: "100"
       REDIS_ADDR: redis:6379
+      API_KEY_ENCRYPTION_KEY: ic-aes-k8xR2mP9vL5nQ7wY3aF1bC6dE0gH4jM
 
 volumes:
   mysql_data:

@@ -7,6 +7,13 @@ import { AppTopNav } from "@/components/layout/app-top-nav";
 import { useUserStore } from "@/stores/use-user-store";
 import { getStoredToken } from "@/services/api/client";
 
+const PUBLIC_PATHS = ["/auth/", "/"];
+
+function isPublicPath(pathname: string) {
+    if (pathname === "/") return true;
+    return PUBLIC_PATHS.some((p) => p !== "/" && pathname.startsWith(p));
+}
+
 export default function UserLayout({ children }: { children: ReactNode }) {
     const fetchUser = useUserStore((s) => s.fetchUser);
     const pathname = usePathname();
@@ -14,7 +21,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         const token = getStoredToken();
-        if (!token && !pathname.startsWith("/auth/")) {
+        if (!token && !isPublicPath(pathname)) {
             router.replace("/auth/login");
             return;
         }

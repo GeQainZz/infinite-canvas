@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"infinite-canvas-server/crypto"
 	"infinite-canvas-server/repository"
 )
 
@@ -18,14 +19,16 @@ type GenerateService struct {
 	creditService *CreditService
 	creditRepo    *repository.CreditRepo
 	httpClient    *http.Client
+	encryptKey    string
 }
 
-func NewGenerateService(apiConfigRepo *repository.ApiConfigRepo, creditService *CreditService, creditRepo *repository.CreditRepo) *GenerateService {
+func NewGenerateService(apiConfigRepo *repository.ApiConfigRepo, creditService *CreditService, creditRepo *repository.CreditRepo, encryptKey string) *GenerateService {
 	return &GenerateService{
 		apiConfigRepo: apiConfigRepo,
 		creditService: creditService,
 		creditRepo:    creditRepo,
 		httpClient:    &http.Client{Timeout: 10 * time.Minute},
+		encryptKey:    encryptKey,
 	}
 }
 
@@ -53,10 +56,26 @@ func (s *GenerateService) ProxyAudio(tenantID, userID uint, contentType string, 
 	return s.proxy(tenantID, userID, "audio", "/v1/audio/speech", contentType, body)
 }
 
+func (s *GenerateService) getDecryptedApiKey(tenantID uint) (string, error) {
+	cfg, err := s.apiConfigRepo.FindByTenant(tenantID)
+	if err != nil {
+		return "", err
+	}
+	if s.encryptKey != "" {
+		return crypto.Decrypt(s.encryptKey, cfg.ApiKey)
+	}
+	return cfg.ApiKey, nil
+}
+
 func (s *GenerateService) proxy(tenantID, userID uint, genType, path, contentType string, body []byte) (*ProxyResult, error) {
 	cfg, err := s.apiConfigRepo.FindByTenant(tenantID)
 	if err != nil {
 		return nil, errors.New("租户未配置 API，请联系管理员")
+	}
+
+	apiKey, err := s.getDecryptedApiKey(tenantID)
+	if err != nil {
+		apiKey = cfg.ApiKey
 	}
 
 	modelName := extractModelName(contentType, body)
@@ -83,7 +102,7 @@ func (s *GenerateService) proxy(tenantID, userID uint, genType, path, contentTyp
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
-	req.Header.Set("Authorization", "Bearer "+cfg.ApiKey)
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
@@ -181,6 +200,11 @@ func (s *GenerateService) ProxyRaw(tenantID, userID uint, method, path, contentT
 
 	url := strings.TrimRight(cfg.BaseUrl, "/") + path
 
+	apiKey, err := s.getDecryptedApiKey(tenantID)
+	if err != nil {
+		apiKey = cfg.ApiKey
+	}
+
 	var reqBody io.Reader
 	if body != nil {
 		reqBody = bytes.NewReader(body)
@@ -192,7 +216,7 @@ func (s *GenerateService) ProxyRaw(tenantID, userID uint, method, path, contentT
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
-	req.Header.Set("Authorization", "Bearer "+cfg.ApiKey)
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {

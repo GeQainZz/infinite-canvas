@@ -2,6 +2,8 @@ package service
 
 import (
 	"errors"
+	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -12,14 +14,15 @@ import (
 )
 
 type AuthService struct {
-	cfg        *config.Config
-	userRepo   *repository.UserRepo
-	tenantRepo *repository.TenantRepo
-	creditRepo *repository.CreditRepo
+	cfg            *config.Config
+	userRepo       *repository.UserRepo
+	tenantRepo     *repository.TenantRepo
+	creditRepo     *repository.CreditRepo
+	captchaService *CaptchaService
 }
 
-func NewAuthService(cfg *config.Config, userRepo *repository.UserRepo, tenantRepo *repository.TenantRepo, creditRepo *repository.CreditRepo) *AuthService {
-	return &AuthService{cfg: cfg, userRepo: userRepo, tenantRepo: tenantRepo, creditRepo: creditRepo}
+func NewAuthService(cfg *config.Config, userRepo *repository.UserRepo, tenantRepo *repository.TenantRepo, creditRepo *repository.CreditRepo, captchaService *CaptchaService) *AuthService {
+	return &AuthService{cfg: cfg, userRepo: userRepo, tenantRepo: tenantRepo, creditRepo: creditRepo, captchaService: captchaService}
 }
 
 type Claims struct {
@@ -30,9 +33,11 @@ type Claims struct {
 }
 
 type RegisterInput struct {
-	TenantName string `json:"tenant_name"`
-	Username   string `json:"username"`
-	Password   string `json:"password"`
+	TenantName    string `json:"tenant_name"`
+	Username      string `json:"username"`
+	Password      string `json:"password"`
+	CaptchaID     string `json:"captcha_id"`
+	CaptchaAnswer string `json:"captcha_answer"`
 }
 
 type RegisterResult struct {
@@ -50,49 +55,63 @@ type LoginResult struct {
 	User  *model.User `json:"user"`
 }
 
+type ChangePasswordInput struct {
+	OldPassword string `json:"old_password"`
+	NewPassword string `json:"new_password"`
+}
+
+type UpdateProfileInput struct {
+	DisplayName string `json:"display_name"`
+	AvatarURL   string `json:"avatar_url"`
+}
+
+func validatePasswordStrength(password string) error {
+	if len(password) < 8 {
+		return errors.New("密码至少需要8个字符")
+	}
+	hasLetter := regexp.MustCompile(`[a-zA-Z]`).MatchString(password)
+	hasDigit := regexp.MustCompile(`[0-9]`).MatchString(password)
+	if !hasLetter || !hasDigit {
+		return errors.New("密码需包含字母和数字")
+	}
+	return nil
+}
+
 func (s *AuthService) Register(input RegisterInput) (*RegisterResult, error) {
 	if input.Username == "" || input.Password == "" {
 		return nil, errors.New("请输入用户名和密码")
 	}
-	if len(input.Password) < 6 {
-		return nil, errors.New("密码至少需要6个字符")
+	if err := validatePasswordStrength(input.Password); err != nil {
+		return nil, err
 	}
 
-	tenantName := input.TenantName
-	if tenantName == "" {
-		tenantName = input.Username
+	if s.captchaService != nil && !s.captchaService.Validate(input.CaptchaID, input.CaptchaAnswer) {
+		return nil, errors.New("验证码不正确")
 	}
 
-	tenant := &model.Tenant{
-		Name:   tenantName,
-		Domain: tenantName,
-		Plan:   model.PlanFree,
-		Status: model.TenantActive,
-	}
-	if err := s.tenantRepo.Create(tenant); err != nil {
-		return nil, errors.New("创建租户失败")
-	}
-
-	result, err := s.createUserAndToken(tenant.ID, input.Username, input.Password, model.RoleTenantAdmin)
+	result, err := s.createUserAndToken(0, input.Username, input.Password, model.RoleUser)
 	if err != nil {
 		return nil, err
 	}
 
-	// Give 1000 free credits to new tenant admin
+	credits := s.cfg.RegistrationCredits
+	if credits <= 0 {
+		credits = 100
+	}
 	account := &model.CreditAccount{
-		TenantID:    tenant.ID,
+		TenantID:    0,
 		UserID:      result.User.ID,
-		Balance:     1000,
-		TotalEarned: 1000,
+		Balance:     credits,
+		TotalEarned: credits,
 	}
 	if err := s.creditRepo.CreateAccount(account); err == nil {
 		s.creditRepo.CreateTransaction(&model.CreditTransaction{
 			AccountID:    account.ID,
 			Type:         model.TxTypeEarn,
-			Amount:       1000,
-			BalanceAfter: 1000,
+			Amount:       credits,
+			BalanceAfter: credits,
 			RefType:      "welcome",
-			Note:         "注册赠送 1000 积分",
+			Note:         fmt.Sprintf("注册赠送 %d 积分", credits),
 		})
 	}
 
@@ -135,6 +154,42 @@ func (s *AuthService) Login(input LoginInput) (*LoginResult, error) {
 		return nil, err
 	}
 	return &LoginResult{Token: token, User: user}, nil
+}
+
+func (s *AuthService) ChangePassword(userID uint, input ChangePasswordInput) error {
+	user, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		return errors.New("用户不存在")
+	}
+	if !CheckPassword(user.PasswordHash, input.OldPassword) {
+		return errors.New("原密码不正确")
+	}
+	if err := validatePasswordStrength(input.NewPassword); err != nil {
+		return err
+	}
+	hash, err := HashPassword(input.NewPassword)
+	if err != nil {
+		return err
+	}
+	user.PasswordHash = hash
+	return s.userRepo.Update(user)
+}
+
+func (s *AuthService) UpdateProfile(userID uint, input UpdateProfileInput) (*model.User, error) {
+	user, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		return nil, errors.New("用户不存在")
+	}
+	if input.DisplayName != "" {
+		user.DisplayName = input.DisplayName
+	}
+	if input.AvatarURL != "" {
+		user.AvatarURL = input.AvatarURL
+	}
+	if err := s.userRepo.Update(user); err != nil {
+		return nil, err
+	}
+	return user, nil
 }
 
 func (s *AuthService) generateToken(user *model.User) (string, error) {

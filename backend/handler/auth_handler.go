@@ -54,3 +54,32 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	}
 	model.OK(c, user)
 }
+
+func (h *AuthHandler) ChangePassword(c *gin.Context) {
+	claims := c.MustGet("claims").(*service.Claims)
+	var input service.ChangePasswordInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		model.Fail(c, 400, "无效的请求参数")
+		return
+	}
+	if err := h.authService.ChangePassword(claims.UserID, input); err != nil {
+		model.Fail(c, 400, err.Error())
+		return
+	}
+	model.OK(c, nil)
+}
+
+func (h *AuthHandler) UpdateProfile(c *gin.Context) {
+	claims := c.MustGet("claims").(*service.Claims)
+	var input service.UpdateProfileInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		model.Fail(c, 400, "无效的请求参数")
+		return
+	}
+	user, err := h.authService.UpdateProfile(claims.UserID, input)
+	if err != nil {
+		model.Fail(c, 400, err.Error())
+		return
+	}
+	model.OK(c, user)
+}

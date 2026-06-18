@@ -1,11 +1,13 @@
 "use client";
 
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, LogIn, UserPlus, Sparkles, ImageIcon, Video, Music2, Layers } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { App, Button, Image, Tag } from "antd";
+import { useRouter } from "next/navigation";
 
 import { fetchPrompts, type Prompt } from "@/services/api/prompts";
 import { navigationTools } from "@/constant/navigation-tools";
+import { getStoredToken } from "@/services/api/client";
 import { cn } from "@/lib/utils";
 
 function Highlighter({ action, color, children }: { action: "highlight" | "underline"; color: string; children: ReactNode }) {
@@ -21,18 +23,15 @@ function Highlighter({ action, color, children }: { action: "highlight" | "under
     );
 }
 
-export default function IndexPage() {
-    const { message } = App.useApp();
-    const [primaryTool] = navigationTools;
-    const [promptShowcase, setPromptShowcase] = useState<Prompt[]>([]);
-    const [previewIndex, setPreviewIndex] = useState(0);
-    const [previewOpen, setPreviewOpen] = useState(false);
+const features = [
+    { icon: ImageIcon, title: "AI 图片生成", desc: "文生图、图生图、多角度生成，支持多种主流模型" },
+    { icon: Video, title: "视频创作", desc: "AI 视频生成，将静态创意转化为动态作品" },
+    { icon: Music2, title: "音频生成", desc: "AI 配音与音效，为创作增添声音维度" },
+    { icon: Layers, title: "无限画布", desc: "自由连接节点，构建复杂创作工作流" },
+];
 
-    useEffect(() => {
-        void fetchPrompts({ pageSize: 12 })
-            .then((data) => setPromptShowcase(data.items))
-            .catch((error) => message.error(error instanceof Error ? error.message : "获取提示词失败"));
-    }, [message]);
+function PublicHome() {
+    const router = useRouter();
 
     return (
         <main className="relative h-full overflow-y-auto bg-background bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px] text-stone-950 dark:bg-[radial-gradient(rgba(245,245,244,.18)_1px,transparent_1px)] dark:text-stone-100">
@@ -54,7 +53,89 @@ export default function IndexPage() {
                         ，让创作从单次生成变成连续推演。
                     </p>
                     <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-                        <Button type="primary" size="large" href={`/${primaryTool.slug}`} icon={<ArrowRight className="size-4" />} iconPlacement="end">
+                        <Button type="primary" size="large" onClick={() => router.push("/auth/register")} icon={<UserPlus className="size-4" />} iconPlacement="end">
+                            免费注册
+                        </Button>
+                        <Button size="large" onClick={() => router.push("/auth/login")} icon={<LogIn className="size-4" />} iconPlacement="end">
+                            登录
+                        </Button>
+                    </div>
+                </div>
+
+                <section className="relative mx-auto mb-20 max-w-6xl border-t border-stone-200 pt-12 dark:border-stone-800">
+                    <div className="mb-10 text-center">
+                        <h2 className="text-3xl font-semibold text-stone-950 dark:text-stone-100">强大的 AI 创作工具</h2>
+                        <p className="mt-3 text-base leading-7 text-stone-500 dark:text-stone-400">一站式 AI 内容创作平台，覆盖图片、视频、音频等多种媒介</p>
+                    </div>
+                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                        {features.map((feature) => {
+                            const Icon = feature.icon;
+                            return (
+                                <div
+                                    key={feature.title}
+                                    className="group rounded-2xl border border-stone-200 bg-stone-50/80 p-6 transition hover:border-stone-300 hover:shadow-sm dark:border-stone-800 dark:bg-stone-900/50 dark:hover:border-stone-700"
+                                >
+                                    <div className="mb-4 inline-flex size-12 items-center justify-center rounded-xl bg-stone-200/80 dark:bg-stone-800">
+                                        <Icon className="size-6 text-stone-600 dark:text-stone-300" />
+                                    </div>
+                                    <h3 className="mb-2 text-lg font-semibold text-stone-950 dark:text-stone-100">{feature.title}</h3>
+                                    <p className="text-sm leading-6 text-stone-500 dark:text-stone-400">{feature.desc}</p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </section>
+            </section>
+        </main>
+    );
+}
+
+export default function IndexPage() {
+    const { message } = App.useApp();
+    const [primaryTool] = navigationTools;
+    const [promptShowcase, setPromptShowcase] = useState<Prompt[]>([]);
+    const [previewIndex, setPreviewIndex] = useState(0);
+    const [previewOpen, setPreviewOpen] = useState(false);
+    const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setIsLoggedIn(!!getStoredToken());
+        setMounted(true);
+    }, []);
+
+    useEffect(() => {
+        if (!isLoggedIn) return;
+        void fetchPrompts({ pageSize: 12 })
+            .then((data) => setPromptShowcase(data.items))
+            .catch((error) => message.error(error instanceof Error ? error.message : "获取提示词失败"));
+    }, [isLoggedIn, message]);
+
+    if (!mounted) return null;
+
+    if (!isLoggedIn) return <PublicHome />;
+
+    return (
+        <main className="relative h-full overflow-y-auto bg-background bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px] text-stone-950 dark:bg-[radial-gradient(rgba(245,245,244,.18)_1px,transparent_1px)] dark:text-stone-100">
+            <section className="relative mx-auto min-h-[calc(100vh-4rem)] max-w-7xl overflow-hidden px-6">
+                <div className="pointer-events-none absolute left-[15%] top-24 size-20 rounded-full border border-dashed border-stone-200 dark:border-stone-800" />
+                <div className="pointer-events-none absolute right-[23%] top-[48%] size-20 rounded-full border border-dashed border-stone-200 dark:border-stone-800" />
+
+                <div className="relative flex min-h-[620px] flex-col items-center justify-center pt-10 text-center">
+                    <h1 className="ai-title-aurora max-w-5xl text-balance text-5xl font-semibold tracking-normal sm:text-7xl lg:text-8xl">无限画布</h1>
+                    <p className="mt-8 max-w-3xl text-balance text-lg leading-8 text-stone-500 dark:text-stone-400">
+                        在
+                        <Highlighter action="underline" color="#FF9800">
+                            无限画布
+                        </Highlighter>
+                        中生成、连接和重组
+                        <Highlighter action="highlight" color="#87CEFA">
+                            图片、文字与图形
+                        </Highlighter>
+                        ，让创作从单次生成变成连续推演。
+                    </p>
+                    <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+                        <Button type="primary" size="large" href={'/' + primaryTool.slug} icon={<ArrowRight className="size-4" />} iconPlacement="end">
                             开始使用
                         </Button>
                         <Button size="large" href="/canvas">

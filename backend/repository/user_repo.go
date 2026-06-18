@@ -15,7 +15,7 @@ func (r *UserRepo) Create(user *model.User) error {
 
 func (r *UserRepo) FindByID(id uint) (*model.User, error) {
 	var user model.User
-	err := r.db.Preload("Tenant").First(&user, id).Error
+	err := r.db.First(&user, id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +54,7 @@ func (r *UserRepo) ListAll(page, pageSize int) ([]model.User, int64, error) {
 	var total int64
 	q := r.db.Model(&model.User{})
 	q.Count(&total)
-	err := q.Preload("Tenant").Offset((page - 1) * pageSize).Limit(pageSize).Order("id DESC").Find(&users).Error
+	err := q.Offset((page - 1) * pageSize).Limit(pageSize).Order("id DESC").Find(&users).Error
 	return users, total, err
 }
 

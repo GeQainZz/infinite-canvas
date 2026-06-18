@@ -1,4 +1,4 @@
-import { FileText, ImagePlus, Images, Maximize2, Shield, Settings, Video, Zap } from "lucide-react";
+import { FileText, ImagePlus, Images, Maximize2, Shield, Settings, User, Video, Zap } from "lucide-react";
 
 export const navigationTools = [
     {
@@ -33,13 +33,14 @@ export const navigationTools = [
     },
     {
         slug: "settings",
-        label: "系统设置",
-        icon: Settings,
+        label: "个人中心",
+        icon: User,
     },
     {
         slug: "admin",
         label: "管理后台",
         icon: Shield,
+        adminOnly: true,
     },
 ] as const;
 

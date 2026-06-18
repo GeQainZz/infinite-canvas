@@ -22,7 +22,6 @@ type User struct {
 	Role         UserRole   `gorm:"size:20;default:user" json:"role"`
 	Status       UserStatus `gorm:"size:20;default:active" json:"status"`
 
-	Tenant *Tenant `gorm:"foreignKey:TenantID" json:"tenant,omitempty"`
 }
 
 func (User) TableName() string { return "users" }
