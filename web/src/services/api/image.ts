@@ -3,10 +3,11 @@ import { isLoggedIn, proxyAiPost, proxyAiGet, proxyAiGetPath } from "./ai-proxy"
 
 import { buildApiUrl, resolveModelRequestConfig, type AiConfig, type ModelChannel } from "@/stores/use-config-store";
 import { nanoid } from "nanoid";
-import { dataUrlToFile } from "@/lib/image-utils";
 import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
+import { dataUrlToFile } from "@/lib/image-utils";
 import { imageToDataUrl } from "@/services/image-storage";
 import type { ReferenceImage } from "@/types/image";
+import { notifyCreditBalanceChanged } from "@/constant/credits";
 
 export type AiTextMessage = {
     role: "system" | "user" | "assistant";
@@ -400,6 +401,7 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
             },
         );
         const images = parseImagePayload(response.data);
+        notifyCreditBalanceChanged();
         return images;
     } catch (error) {
         throw new Error(readAxiosError(error, "请求失败"));
@@ -412,25 +414,30 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     const quality = normalizeQuality(config.quality);
     const requestSize = resolveRequestSize(quality, config.size);
     const requestPrompt = buildImageReferencePromptText(prompt, references);
-    const formData = new FormData();
-    formData.set("model", requestConfig.model);
-    formData.set("prompt", withSystemPrompt(requestConfig, requestPrompt));
-    formData.set("n", String(n));
-    formData.set("response_format", "b64_json");
-    formData.set("output_format", IMAGE_OUTPUT_FORMAT);
-    if (quality) {
-        formData.set("quality", quality);
+    const body = new FormData();
+    body.append("model", requestConfig.model);
+    body.append("prompt", withSystemPrompt(requestConfig, requestPrompt));
+    body.append("n", String(n));
+    if (requestSize) body.append("size", requestSize);
+    if (quality) body.append("quality", quality);
+    body.append("response_format", "b64_json");
+    body.append("output_format", IMAGE_OUTPUT_FORMAT);
+
+    const referenceFiles = await Promise.all(references.map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
+    referenceFiles.forEach((file) => body.append("image", file, file.name || "reference.png"));
+
+    if (mask) {
+        const maskFile = dataUrlToFile({ ...mask, dataUrl: await imageToDataUrl(mask) });
+        body.append("mask", maskFile, maskFile.name || "mask.png");
     }
-    if (requestSize) {
-        formData.set("size", requestSize);
-    }
-    const files = await Promise.all(references.map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
-    files.forEach((file) => formData.append("image", file));
-    if (mask) formData.set("mask", dataUrlToFile(mask));
 
     try {
-        const response = await axios.post<ImageApiResponse>(aiApiUrl(requestConfig, "/images/edits"), formData, { headers: aiHeaders(requestConfig), signal: options?.signal });
+        const response = await axios.post<ImageApiResponse>(aiApiUrl(requestConfig, "/images/edits"), body, {
+            headers: aiHeaders(requestConfig),
+            signal: options?.signal,
+        });
         const images = parseImagePayload(response.data);
+        notifyCreditBalanceChanged();
         return images;
     } catch (error) {
         throw new Error(readAxiosError(error, "请求失败"));

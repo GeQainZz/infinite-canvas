@@ -1,7 +1,8 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { Keyboard, Settings2, LogIn, LogOut, Shield } from "lucide-react";
+import { Keyboard, Settings2, LogIn, LogOut, Shield, User, ChevronDown } from "lucide-react";
+import { Dropdown } from "antd";
 
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { UserCreditDisplay } from "@/components/layout/user-credit-display";
@@ -35,6 +36,31 @@ export function UserStatusActions({ showConfig = true, variant = "default", onOp
     };
 
     const isAdmin = user?.role === "super_admin" || user?.role === "tenant_admin";
+    const userMenuItems = [
+        {
+            key: "profile",
+            icon: <User className="size-4" />,
+            label: "个人中心",
+            onClick: () => router.push("/settings"),
+        },
+        ...(isAdmin
+            ? [
+                  {
+                      key: "admin",
+                      icon: <Shield className="size-4" />,
+                      label: "管理后台",
+                      onClick: () => router.push("/admin"),
+                  },
+              ]
+            : []),
+        {
+            key: "logout",
+            icon: <LogOut className="size-4" />,
+            label: "退出登录",
+            onClick: handleLogout,
+            danger: true,
+        },
+    ];
 
     return (
         <div className="inline-flex shrink-0 items-center gap-1">
@@ -53,23 +79,22 @@ export function UserStatusActions({ showConfig = true, variant = "default", onOp
             {getStoredToken() ? (
                 <>
                     {user ? (
-                        <button type="button" className="ml-1 cursor-pointer text-xs text-stone-500 transition hover:text-stone-900 dark:text-stone-400 dark:hover:text-white" onClick={() => router.push("/settings")} aria-label="个人中心" title="个人中心">{user.displayName}</button>
-                    ) : null}
-                    {isAdmin ? (
-                        <button
-                            type="button"
-                            className={naturalIconClass}
-                            style={iconStyle}
-                            onClick={() => router.push("/admin")}
-                            aria-label="管理后台"
-                            title="管理后台"
+                        <Dropdown
+                            menu={{ items: userMenuItems }}
+                            trigger={["click"]}
+                            placement="bottomRight"
                         >
-                            <Shield className="size-4" />
-                        </button>
+                            <button
+                                type="button"
+                                className="ml-1 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-stone-500 transition hover:bg-stone-100 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-white"
+                                aria-label="用户菜单"
+                                title="用户菜单"
+                            >
+                                <span>{user.displayName}</span>
+                                <ChevronDown className="size-3.5" />
+                            </button>
+                        </Dropdown>
                     ) : null}
-                    <button type="button" className={naturalIconClass} style={iconStyle} onClick={handleLogout} aria-label="退出登录" title="退出登录">
-                        <LogOut className="size-4" />
-                    </button>
                 </>
             ) : (
                 <button

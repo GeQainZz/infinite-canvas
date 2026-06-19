@@ -1,18 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import {
-  App,
-  Button,
-  Card,
-  Modal,
-  Table,
-  Tag,
-  Spin,
-} from "antd";
-import { ShoppingCart, Zap, CheckCircle2, Clock, XCircle } from "lucide-react";
-import { listPayouts, createRechargeOrder, listMyOrders, type CreditPayout, type RechargeOrder } from "@/services/api/recharge";
-import { getBalance } from "@/services/api/credits";
+import Link from "next/link";
+import { Button, Card, Table, Tag, Spin } from "antd";
+import { Zap, CheckCircle2, Clock, XCircle, ArrowDownLeft, ArrowUpRight, ReceiptText } from "lucide-react";
+import { listPayouts, listMyOrders, type CreditPayout, type RechargeOrder } from "@/services/api/recharge";
+import { getBalance, getTransactions } from "@/services/api/credits";
 import { cn } from "@/lib/utils";
 
 const payoutColors: Record<string, { bg: string; border: string; badge: string }> = {
@@ -51,29 +44,26 @@ const statusConfig: Record<string, { color: string; icon: React.ReactNode; label
 };
 
 export default function RechargePage() {
-  const { message } = App.useApp();
   const [payouts, setPayouts] = useState<CreditPayout[]>([]);
   const [loading, setLoading] = useState(true);
   const [balance, setBalance] = useState<number | null>(null);
-  const [purchasing, setPurchasing] = useState<string | null>(null);
+  const [totalEarned, setTotalEarned] = useState<number>(0);
+  const [totalSpent, setTotalSpent] = useState<number>(0);
   const [orders, setOrders] = useState<RechargeOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
-  const [confirmModal, setConfirmModal] = useState<{ open: boolean; payout: CreditPayout | null }>({
-    open: false,
-    payout: null,
-  });
+  const [transactions, setTransactions] = useState<Array<{ id: number; type: string; amount: number; balance_after: number; ref_type: string; note: string; created_at: string }>>([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [payoutData, bal] = await Promise.all([
-        listPayouts(),
-        getBalance().catch(() => null),
-      ]);
+      const [payoutData, bal] = await Promise.all([listPayouts(), getBalance().catch(() => null)]);
       setPayouts(payoutData);
-      if (bal) setBalance(bal.balance);
-    } catch {
-      // ignore
+      if (bal) {
+        setBalance(bal.balance);
+        setTotalEarned(bal.total_earned);
+        setTotalSpent(bal.total_spent);
+      }
     } finally {
       setLoading(false);
     }
@@ -91,31 +81,23 @@ export default function RechargePage() {
     }
   }, []);
 
+  const fetchTransactions = useCallback(async () => {
+    setTransactionsLoading(true);
+    try {
+      const result = await getTransactions(1, 50);
+      setTransactions(result.items || []);
+    } catch {
+      setTransactions([]);
+    } finally {
+      setTransactionsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchData();
     fetchOrders();
-  }, [fetchData, fetchOrders]);
-
-  const handlePurchase = async () => {
-    const payout = confirmModal.payout;
-    if (!payout) return;
-    setPurchasing(payout.id);
-    try {
-      const order = await createRechargeOrder(payout.id);
-      if (order.status === "completed") {
-        message.success(`购买成功！${payout.credits} 积分已到账`);
-        fetchData();
-        fetchOrders();
-      } else {
-        message.info("订单已创建，请完成支付");
-      }
-      setConfirmModal({ open: false, payout: null });
-    } catch (err: any) {
-      message.error(err?.message || "购买失败，请重试");
-    } finally {
-      setPurchasing(null);
-    }
-  };
+    fetchTransactions();
+  }, [fetchData, fetchOrders, fetchTransactions]);
 
   const orderColumns = [
     {
@@ -156,6 +138,79 @@ export default function RechargePage() {
     },
   ];
 
+  const transactionTypeConfig: Record<string, { color: string; label: string }> = {
+    earn: { color: "success", label: "收入" },
+    spend: { color: "error", label: "支出" },
+    refund: { color: "processing", label: "退款" },
+    adjust: { color: "warning", label: "调整" },
+  };
+
+  const refTypeLabel = (value: string) => {
+    if (value === "image") return "图片生成";
+    if (value === "video") return "视频生成";
+    if (value === "audio") return "音频生成";
+    if (value === "text") return "文本生成";
+    if (value === "recharge") return "充值";
+    return value || "-";
+  };
+
+  const transactionColumns = [
+    {
+      title: "类型",
+      dataIndex: "type",
+      key: "type",
+      width: 100,
+      render: (value: string) => {
+        const cfg = transactionTypeConfig[value] || { color: "default", label: value || "-" };
+        return <Tag color={cfg.color}>{cfg.label}</Tag>;
+      },
+    },
+    {
+      title: "变动",
+      dataIndex: "amount",
+      key: "amount",
+      width: 110,
+      render: (value: number, record: { type: string }) => {
+        const positive = record.type === "earn" || record.type === "refund";
+        return (
+          <span className={cn("inline-flex items-center gap-1 font-mono font-semibold", positive ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>
+            {positive ? <ArrowDownLeft className="size-3.5" /> : <ArrowUpRight className="size-3.5" />}
+            {positive ? "+" : "-"}
+            {Math.abs(value)}
+          </span>
+        );
+      },
+    },
+    {
+      title: "余额",
+      dataIndex: "balance_after",
+      key: "balance_after",
+      width: 100,
+      render: (value: number) => <span className="font-mono">{value}</span>,
+    },
+    {
+      title: "来源",
+      dataIndex: "ref_type",
+      key: "ref_type",
+      width: 120,
+      render: (value: string) => refTypeLabel(value),
+    },
+    {
+      title: "备注",
+      dataIndex: "note",
+      key: "note",
+      ellipsis: true,
+      render: (value: string) => value || "-",
+    },
+    {
+      title: "时间",
+      dataIndex: "created_at",
+      key: "created_at",
+      width: 180,
+      render: (value: string) => new Date(value).toLocaleString("zh-CN"),
+    },
+  ];
+
   if (loading) {
     return (
       <main className="flex h-full items-center justify-center">
@@ -166,31 +221,47 @@ export default function RechargePage() {
 
   return (
     <main className="mx-auto max-w-5xl overflow-y-auto px-6 py-8">
-      {/* Header with balance */}
       <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-stone-950 dark:text-stone-100">
-            积分充值
-          </h1>
-          <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">
-            选择套餐购买积分，用于 AI 生成服务
-          </p>
+          <h1 className="text-2xl font-semibold text-stone-950 dark:text-stone-100">积分充值</h1>
+          <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">当前仅展示套餐，暂不开放在线购买</p>
         </div>
-        {balance !== null && (
-          <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 dark:border-amber-800 dark:bg-amber-950/60">
-            <Zap className="size-5 text-amber-500" />
-            <span className="text-sm text-stone-600 dark:text-stone-300">当前积分</span>
-            <span className="text-xl font-bold text-amber-700 dark:text-amber-400">
-              {balance}
-            </span>
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          {balance !== null && (
+            <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 dark:border-amber-800 dark:bg-amber-950/60">
+              <Zap className="size-5 text-amber-500" />
+              <span className="text-sm text-stone-600 dark:text-stone-300">当前积分</span>
+              <span className="text-xl font-bold text-amber-700 dark:text-amber-400">{balance}</span>
+            </div>
+          )}
+          <Link href="/credits">
+            <Button>查看积分明细</Button>
+          </Link>
+        </div>
       </div>
 
-      {/* Credit packages */}
-      <h2 className="mb-4 text-lg font-medium text-stone-800 dark:text-stone-200">
-        选择套餐
-      </h2>
+      <div className="mb-8 grid gap-4 md:grid-cols-3">
+        <Card>
+          <div className="text-sm text-stone-500 dark:text-stone-400">当前积分</div>
+          <div className="mt-2 text-2xl font-semibold text-stone-950 dark:text-stone-100">{balance ?? 0}</div>
+        </Card>
+        <Card>
+          <div className="text-sm text-stone-500 dark:text-stone-400">累计收入</div>
+          <div className="mt-2 inline-flex items-center gap-2 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
+            <ArrowDownLeft className="size-5" />
+            {totalEarned}
+          </div>
+        </Card>
+        <Card>
+          <div className="text-sm text-stone-500 dark:text-stone-400">累计支出</div>
+          <div className="mt-2 inline-flex items-center gap-2 text-2xl font-semibold text-rose-600 dark:text-rose-400">
+            <ArrowUpRight className="size-5" />
+            {totalSpent}
+          </div>
+        </Card>
+      </div>
+
+      <h2 className="mb-4 text-lg font-medium text-stone-800 dark:text-stone-200">选择套餐</h2>
       <div className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {payouts.map((payout) => {
           const colors = payoutColors[payout.id] || payoutColors.basic;
@@ -204,38 +275,22 @@ export default function RechargePage() {
               )}
             >
               <div className="mb-3 flex items-center justify-between">
-                <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-medium", colors.badge)}>
-                  {payout.name}
-                </span>
+                <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-medium", colors.badge)}>{payout.name}</span>
               </div>
               <div className="mb-1 flex items-baseline gap-1">
-                <span className="text-3xl font-bold text-stone-900 dark:text-stone-100">
-                  {payout.credits}
-                </span>
+                <span className="text-3xl font-bold text-stone-900 dark:text-stone-100">{payout.credits}</span>
                 <span className="text-sm text-stone-500 dark:text-stone-400">积分</span>
               </div>
-              <div className="mb-4 text-lg font-semibold text-stone-700 dark:text-stone-300">
-                {payout.price}
-              </div>
-              <Button
-                type="primary"
-                icon={<ShoppingCart className="size-4" />}
-                block
-                loading={purchasing === payout.id}
-                onClick={() => setConfirmModal({ open: true, payout })}
-                className="mt-auto"
-              >
-                立即购买
+              <div className="mb-4 text-lg font-semibold text-stone-700 dark:text-stone-300">{payout.price}</div>
+              <Button type="primary" block disabled className="mt-auto">
+                暂不开放购买
               </Button>
             </div>
           );
         })}
       </div>
 
-      {/* Order history */}
-      <h2 className="mb-4 text-lg font-medium text-stone-800 dark:text-stone-200">
-        充值记录
-      </h2>
+      <h2 className="mb-4 text-lg font-medium text-stone-800 dark:text-stone-200">充值记录</h2>
       <Card>
         <Table
           dataSource={orders}
@@ -247,37 +302,21 @@ export default function RechargePage() {
         />
       </Card>
 
-      {/* Confirmation modal */}
-      <Modal
-        title="确认购买"
-        open={confirmModal.open}
-        onOk={handlePurchase}
-        onCancel={() => setConfirmModal({ open: false, payout: null })}
-        okText="确认支付"
-        cancelText="取消"
-        confirmLoading={purchasing === confirmModal.payout?.id}
-      >
-        {confirmModal.payout && (
-          <div className="py-2">
-            <p className="text-base">
-              确认购买 <strong>{confirmModal.payout.name}</strong>？
-            </p>
-            <div className="mt-3 rounded-lg bg-stone-50 p-4 dark:bg-stone-800">
-              <div className="flex justify-between">
-                <span className="text-stone-500">积分</span>
-                <span className="font-mono font-semibold">{confirmModal.payout.credits}</span>
-              </div>
-              <div className="mt-2 flex justify-between">
-                <span className="text-stone-500">价格</span>
-                <span className="font-semibold">{confirmModal.payout.price}</span>
-              </div>
-            </div>
-            <p className="mt-3 text-xs text-stone-400">
-              * 当前为模拟支付，点击确认后积分将立即到账
-            </p>
-          </div>
-        )}
-      </Modal>
+      <h2 className="mb-4 mt-10 flex items-center gap-2 text-lg font-medium text-stone-800 dark:text-stone-200">
+        <ReceiptText className="size-5" />
+        积分流水
+      </h2>
+      <Card>
+        <Table
+          dataSource={transactions}
+          columns={transactionColumns}
+          rowKey="id"
+          loading={transactionsLoading}
+          pagination={false}
+          locale={{ emptyText: "暂无积分流水" }}
+          scroll={{ x: 860 }}
+        />
+      </Card>
     </main>
   );
 }

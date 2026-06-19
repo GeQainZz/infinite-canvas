@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler.AuthHandler, adminHandler *handler.AdminHandler, userHandler *handler.UserHandler, creditHandler *handler.CreditHandler, generateHandler *handler.GenerateHandler, apiConfigHandler *handler.ApiConfigHandler, proxyHandler *handler.ProxyHandler, canvasHandler *handler.CanvasHandler, rechargeHandler *handler.RechargeHandler, captchaHandler *handler.CaptchaHandler) {
+func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler.AuthHandler, adminHandler *handler.AdminHandler, userHandler *handler.UserHandler, creditHandler *handler.CreditHandler, generateHandler *handler.GenerateHandler, apiConfigHandler *handler.ApiConfigHandler, proxyHandler *handler.ProxyHandler, canvasHandler *handler.CanvasHandler, generationRecordHandler *handler.GenerationRecordHandler, rechargeHandler *handler.RechargeHandler, captchaHandler *handler.CaptchaHandler) {
 	r.Use(middleware.Cors())
 
 	api := r.Group("/api")
@@ -27,6 +27,7 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 		auth.GET("/credits/balance", creditHandler.GetBalance)
 		auth.GET("/credits/transactions", creditHandler.GetTransactions)
 		auth.GET("/credits/estimate", creditHandler.EstimateCost)
+		auth.GET("/api-config/catalog", apiConfigHandler.Catalog)
 
 		auth.POST("/generate/image", generateHandler.Image)
 		auth.POST("/generate/text", generateHandler.Text)
@@ -42,6 +43,11 @@ func Setup(r *gin.Engine, authService *service.AuthService, authHandler *handler
 		auth.GET("/canvas", canvasHandler.List)
 		auth.DELETE("/canvas/:id", canvasHandler.Delete)
 		auth.POST("/canvas/delete-batch", canvasHandler.DeleteBatch)
+
+		auth.POST("/generation-records/save", generationRecordHandler.Save)
+		auth.GET("/generation-records", generationRecordHandler.List)
+		auth.DELETE("/generation-records/:id", generationRecordHandler.Delete)
+		auth.POST("/generation-records/delete-batch", generationRecordHandler.DeleteBatch)
 
 		auth.GET("/recharge/payouts", rechargeHandler.ListPayouts)
 		auth.POST("/recharge/order", rechargeHandler.CreateOrder)

@@ -1,52 +1,77 @@
 ---
 title: Docker 部署
-description: 使用 Docker Compose 部署无限画布
+description: 使用 Docker Compose 部署当前商用版无限画布
 ---
 
 # Docker 部署
 
-如果你希望在自己的机器或服务器上运行项目，可以直接使用 Docker Compose。
+当前版本采用 `Next.js + Go backend + MySQL + Redis` 的组合部署，适合单机或单台云服务器运行。
 
-## 使用发布镜像
+## 服务结构
+
+- `app`：前端站点，对外提供 `3001`
+- `backend`：Go 后端，对外提供 `18080`
+- `mysql`：业务数据库，仅容器内访问
+- `redis`：缓存与验证码等辅助能力
+
+## 首次部署
 
 ```bash
-git clone git@github.com:basketikun/infinite-canvas.git
+git clone <your-repo>
 cd infinite-canvas
+cp .env.example .env
+```
+
+按需补齐 `.env`：
+
+```env
+MYSQL_ROOT_PASSWORD=replace-this-password
+MYSQL_DATABASE=infinite_canvas
+JWT_KEY=replace-this-jwt-secret
+API_KEY_ENCRYPTION_KEY=replace-this-aes-secret
+REGISTRATION_CREDITS=0
+NEXT_PUBLIC_API_URL=http://your-domain-or-ip:18080/api
+NEXT_PUBLIC_DOC_URL=https://docs.canvas.best
+```
+
+启动：
+
+```bash
+docker compose build
 docker compose up -d
 ```
 
-启动后访问：
+## 访问地址
 
-```text
-http://localhost:3000
-```
+- 前端：`http://服务器IP:3001`
+- 后端 API：`http://服务器IP:18080/api`
 
-## 本地构建镜像
+## 更新发布
 
-如果需要基于当前源码构建镜像：
-
-```bash
-docker compose -f docker-compose.local.yml up -d --build
-```
-
-## 文档站镜像
-
-文档站位于 `docs/` 目录，按带服务端能力的 Next.js standalone 应用单独构建，不打进主应用镜像。
-
-使用发布镜像：
+前端有独立镜像标签时：
 
 ```bash
-cd docs
-docker compose up -d
+docker build -t infinite-canvas-app:latest .
+docker compose up -d --force-recreate app
 ```
 
-基于当前源码本地构建：
+后端更新时：
 
 ```bash
-cd docs
-docker compose -f docker-compose.local.yml up -d --build
+docker compose build backend
+docker compose up -d --force-recreate backend
 ```
 
-## 数据说明
+## 当前版本说明
 
-当前主应用镜像只启动 Next.js。画布、我的素材、生成记录和 AI API Key 默认保存在浏览器本地；第三方提示词由 Next.js route 拉取后缓存在运行实例内存里，不需要额外挂载数据目录。
+- 用户注册/登录、个人中心、积分体系、画布保存、图片/视频/音频生成记录已走后端存储。
+- 用户侧 AI 调用统一走后端代理；普通用户不再自行配置 API Key。
+- 管理员在 `/admin/api-config` 统一配置上游 API 和模型计费。
+- 只有已配置计费的模型才会出现在前台可选模型中。
+
+## 生产建议
+
+- 不要把 MySQL 暴露到公网。
+- `JWT_KEY` 与 `API_KEY_ENCRYPTION_KEY` 请使用高强度随机字符串。
+- 建议给 `3001` 与 `18080` 前面加 Nginx / Caddy，统一做 HTTPS 与反向代理。
+- 备份至少包含 `mysql_data` 卷和你自己的 `.env`。

@@ -52,8 +52,33 @@ func (r *CreditRepo) FindPricing(tenantID uint, modelName string) (*model.Credit
 	return &pricing, nil
 }
 
+func (r *CreditRepo) FindPricingMap(tenantID uint) (map[string]model.CreditPricing, error) {
+	var items []model.CreditPricing
+	if err := r.db.Where("tenant_id = ?", tenantID).Find(&items).Error; err != nil {
+		return nil, err
+	}
+	result := make(map[string]model.CreditPricing, len(items))
+	for _, item := range items {
+		result[item.Model] = item
+	}
+	return result, nil
+}
+
 func (r *CreditRepo) SavePricing(pricing *model.CreditPricing) error {
-	return r.db.Save(pricing).Error
+	if pricing.ID == 0 {
+		return r.db.Create(pricing).Error
+	}
+	if err := r.db.Model(&model.CreditPricing{}).
+		Where("id = ?", pricing.ID).
+		Updates(map[string]interface{}{
+			"tenant_id":         pricing.TenantID,
+			"model":             pricing.Model,
+			"credits_per_unit":  pricing.CreditsPerUnit,
+			"unit_type":         pricing.UnitType,
+		}).Error; err != nil {
+		return err
+	}
+	return r.db.First(pricing, pricing.ID).Error
 }
 
 func (r *CreditRepo) ListPricing(tenantID uint) ([]model.CreditPricing, error) {

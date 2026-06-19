@@ -111,6 +111,13 @@ type ConfigStore = {
     updateConfig: <K extends keyof AiConfig>(key: K, value: AiConfig[K]) => void;
     updateWebdavConfig: <K extends keyof WebdavSyncConfig>(key: K, value: WebdavSyncConfig[K]) => void;
     isAiConfigReady: (config: AiConfig, model: string) => boolean;
+    applyServerModelCatalog: (catalog: {
+        models?: string[];
+        imageModels?: string[];
+        videoModels?: string[];
+        textModels?: string[];
+        audioModels?: string[];
+    }) => void;
     openConfigDialog: (shouldPromptContinue?: boolean) => void;
     setConfigDialogOpen: (isOpen: boolean) => void;
     clearPromptContinue: () => void;
@@ -185,6 +192,33 @@ export const useConfigStore = create<ConfigStore>()(
                     },
                 })),
             isAiConfigReady: (config, model) => isAiConfigReady(config, model),
+            applyServerModelCatalog: (catalog) =>
+                set((state) => {
+                    const allModels = normalizeServerModelCatalog(catalog.models);
+                    const derivedImageModels = catalog.imageModels?.length ? normalizeServerModelCatalog(catalog.imageModels) : filterModelsByCapability(allModels, "image");
+                    const derivedVideoModels = catalog.videoModels?.length ? normalizeServerModelCatalog(catalog.videoModels) : filterModelsByCapability(allModels, "video");
+                    const derivedTextModels = catalog.textModels?.length ? normalizeServerModelCatalog(catalog.textModels) : filterModelsByCapability(allModels, "text");
+                    const derivedAudioModels = catalog.audioModels?.length ? normalizeServerModelCatalog(catalog.audioModels) : filterModelsByCapability(allModels, "audio");
+                    const nextChannels = state.config.channels.length
+                        ? state.config.channels.map((channel, index) => (index === 0 ? { ...channel, models: allModels } : channel))
+                        : [createModelChannel({ id: "default", name: "默认渠道", baseUrl: state.config.baseUrl, apiKey: state.config.apiKey, models: allModels })];
+                    return {
+                        config: {
+                            ...state.config,
+                            channels: nextChannels,
+                            models: allModels,
+                            imageModels: derivedImageModels,
+                            videoModels: derivedVideoModels,
+                            textModels: derivedTextModels,
+                            audioModels: derivedAudioModels,
+                            model: pickServerDefaultModel(state.config.model, allModels, derivedImageModels),
+                            imageModel: pickServerDefaultModel(state.config.imageModel, derivedImageModels, allModels),
+                            videoModel: pickServerDefaultModel(state.config.videoModel, derivedVideoModels, allModels),
+                            textModel: pickServerDefaultModel(state.config.textModel, derivedTextModels, allModels),
+                            audioModel: pickServerDefaultModel(state.config.audioModel, derivedAudioModels, allModels),
+                        },
+                    };
+                }),
             openConfigDialog: (shouldPromptContinue = false) => set({ isConfigOpen: true, shouldPromptContinue }),
             setConfigDialogOpen: (isConfigOpen) => set({ isConfigOpen }),
             clearPromptContinue: () => set({ shouldPromptContinue: false }),
@@ -349,6 +383,17 @@ function uniqueRawModels(models: string[]) {
 
 function uniqueModelOptions(models: string[]) {
     return Array.from(new Set((models || []).map((model) => model.trim()).filter(Boolean)));
+}
+
+function normalizeServerModelCatalog(models?: string[]) {
+    return uniqueModelOptions((models || []).map((model) => modelOptionName(model)));
+}
+
+function pickServerDefaultModel(currentValue: string, primaryOptions: string[], fallbackOptions: string[]) {
+    const currentModelName = modelOptionName(currentValue || "");
+    if (currentModelName && primaryOptions.includes(currentModelName)) return currentModelName;
+    if (currentModelName && fallbackOptions.includes(currentModelName)) return currentModelName;
+    return primaryOptions[0] || fallbackOptions[0] || currentModelName || "";
 }
 
 export function buildApiUrl(baseUrl: string, path: string) {

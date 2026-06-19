@@ -23,6 +23,7 @@ export type CanvasProject = {
 
 type CanvasStore = {
     hydrated: boolean;
+    currentScope: string;
     projects: CanvasProject[];
     createProject: (title?: string) => string;
     importProject: (project: Partial<CanvasProject>) => string;
@@ -32,16 +33,23 @@ type CanvasStore = {
     replaceProjects: (projects: CanvasProject[]) => void;
     updateProject: (id: string, patch: Partial<Pick<CanvasProject, "nodes" | "connections" | "chatSessions" | "activeChatId" | "backgroundMode" | "showImageInfo" | "viewport">>) => void;
     syncFromCloud: () => Promise<void>;
+    flushProjectSave: (id: string) => Promise<void>;
+    setStorageScope: (scope: string) => Promise<void>;
 };
 
 const initialViewport: ViewportTransform = { x: 0, y: 0, k: 1 };
-const CANVAS_STORE_KEY = "infinite-canvas:canvas_store";
+const CANVAS_STORE_KEY_PREFIX = "infinite-canvas:canvas_store";
+export const DEFAULT_CANVAS_SCOPE = "guest";
 type PersistedCanvasState = Pick<CanvasStore, "projects">;
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
-let queuedPersistState: PersistedCanvasState | null = null;
+const saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const queuedPersistStates = new Map<string, PersistedCanvasState>();
 
 // Cloud save debounce: 2 seconds after last update per project
 const cloudSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+async function flushProjectToCloud(project: CanvasProject) {
+    await saveCanvas(project);
+}
 
 function scheduleCloudSave(project: CanvasProject) {
     const existing = cloudSaveTimers.get(project.id);
@@ -50,9 +58,13 @@ function scheduleCloudSave(project: CanvasProject) {
         project.id,
         setTimeout(() => {
             cloudSaveTimers.delete(project.id);
-            saveCanvas(project).catch((err) => console.error("[CanvasStore] Cloud save failed:", err));
+            flushProjectToCloud(project).catch((err) => console.error("[CanvasStore] Cloud save failed:", err));
         }, 2000),
     );
+}
+
+function resolveCanvasStoreKey(scope: string) {
+    return `${CANVAS_STORE_KEY_PREFIX}:${scope || DEFAULT_CANVAS_SCOPE}`;
 }
 
 const canvasStorage: PersistStorage<CanvasStore> = {
@@ -60,26 +72,40 @@ const canvasStorage: PersistStorage<CanvasStore> = {
         const value = await localForageStorage.getItem(name);
         if (!value) return null;
         const parsed = JSON.parse(value) as StorageValue<CanvasStore>;
-        queuedPersistState = parsed.state as PersistedCanvasState;
+        queuedPersistStates.set(name, parsed.state as PersistedCanvasState);
         return parsed;
     },
     setItem: (name, value) => {
         const nextState = value.state as PersistedCanvasState;
+        const queuedPersistState = queuedPersistStates.get(name);
         if (queuedPersistState && queuedPersistState.projects === nextState.projects) return;
-        queuedPersistState = nextState;
+        queuedPersistStates.set(name, nextState);
+        const saveTimer = saveTimers.get(name);
         if (saveTimer) clearTimeout(saveTimer);
-        saveTimer = setTimeout(() => {
-            saveTimer = null;
-            void localForageStorage.setItem(name, JSON.stringify(value));
-        }, 400);
+        saveTimers.set(
+            name,
+            setTimeout(() => {
+                saveTimers.delete(name);
+                void localForageStorage.setItem(name, JSON.stringify(value));
+            }, 400),
+        );
     },
-    removeItem: (name) => localForageStorage.removeItem(name),
+    removeItem: (name) => {
+        const saveTimer = saveTimers.get(name);
+        if (saveTimer) {
+            clearTimeout(saveTimer);
+            saveTimers.delete(name);
+        }
+        queuedPersistStates.delete(name);
+        return localForageStorage.removeItem(name);
+    },
 };
 
 export const useCanvasStore = create<CanvasStore>()(
     persist(
         (set, get) => ({
             hydrated: false,
+            currentScope: DEFAULT_CANVAS_SCOPE,
             projects: [],
             createProject: (title = "未命名画布") => {
                 const now = new Date().toISOString();
@@ -164,9 +190,32 @@ export const useCanvasStore = create<CanvasStore>()(
                     console.error("[CanvasStore] Cloud sync failed:", err);
                 }
             },
+            flushProjectSave: async (id) => {
+                const saveTimer = cloudSaveTimers.get(id);
+                if (saveTimer) {
+                    clearTimeout(saveTimer);
+                    cloudSaveTimers.delete(id);
+                }
+                const project = get().projects.find((item) => item.id === id);
+                if (!project) return;
+                try {
+                    await flushProjectToCloud(project);
+                } catch (err) {
+                    console.error("[CanvasStore] Flush cloud save failed:", err);
+                }
+            },
+            setStorageScope: async (scope) => {
+                const nextScope = scope || DEFAULT_CANVAS_SCOPE;
+                if (get().currentScope === nextScope && get().hydrated) {
+                    return;
+                }
+                set({ currentScope: nextScope, projects: [], hydrated: false });
+                useCanvasStore.persist.setOptions({ name: resolveCanvasStoreKey(nextScope) });
+                await useCanvasStore.persist.rehydrate();
+            },
         }),
         {
-            name: CANVAS_STORE_KEY,
+            name: resolveCanvasStoreKey(DEFAULT_CANVAS_SCOPE),
             storage: canvasStorage,
             partialize: (state) =>
                 ({

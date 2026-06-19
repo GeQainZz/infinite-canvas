@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"infinite-canvas-server/crypto"
+	"infinite-canvas-server/model"
 	"infinite-canvas-server/repository"
 )
 
@@ -83,15 +84,17 @@ func (s *GenerateService) proxy(tenantID, userID uint, genType, path, contentTyp
 		return nil, errors.New("请指定模型")
 	}
 
-	cost := s.getCost(tenantID, genType, modelName)
-	if cost > 0 {
-		account, err := s.creditService.GetOrCreateAccount(tenantID, userID)
-		if err != nil {
-			return nil, err
-		}
-		if account.Balance < cost {
-			return nil, fmt.Errorf("积分不足，需要 %d 积分，当前余额 %d", cost, account.Balance)
-		}
+	cost, _, err := s.getRequiredPricing(tenantID, genType, modelName)
+	if err != nil {
+		return nil, err
+	}
+
+	account, err := s.creditService.GetOrCreateAccount(tenantID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if account.Balance < cost {
+		return nil, fmt.Errorf("积分不足，需要 %d 积分，当前余额 %d", cost, account.Balance)
 	}
 
 	url := buildUpstreamURL(cfg.BaseUrl, path)
@@ -129,7 +132,7 @@ func (s *GenerateService) proxy(tenantID, userID uint, genType, path, contentTyp
 		}
 	}
 
-	account, _ := s.creditService.GetOrCreateAccount(tenantID, userID)
+	account, _ = s.creditService.GetOrCreateAccount(tenantID, userID)
 	balance := 0
 	if account != nil {
 		balance = account.Balance
@@ -144,12 +147,15 @@ func (s *GenerateService) proxy(tenantID, userID uint, genType, path, contentTyp
 	}, nil
 }
 
-func (s *GenerateService) getCost(tenantID uint, genType, modelName string) int {
+func (s *GenerateService) getRequiredPricing(tenantID uint, genType, modelName string) (int, *model.CreditPricing, error) {
 	pricing, err := s.creditRepo.FindPricing(tenantID, modelName)
 	if err != nil {
-		return 0
+		return 0, nil, fmt.Errorf("模型 %s 未配置计费，暂不可用", modelName)
 	}
-	return pricing.CreditsPerUnit
+	if pricing.CreditsPerUnit <= 0 {
+		return 0, nil, fmt.Errorf("模型 %s 未配置有效计费，暂不可用", modelName)
+	}
+	return pricing.CreditsPerUnit, pricing, nil
 }
 
 func extractModelName(contentType string, body []byte) string {
@@ -218,6 +224,27 @@ func (s *GenerateService) ProxyRaw(tenantID, userID uint, method, path, contentT
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
+	modelName := extractModelName(contentType, body)
+	cost, chargeType := s.getProxyCost(tenantID, method, path, contentType, body, modelName)
+	if chargeType != "" {
+		if modelName == "" {
+			return nil, errors.New("请指定模型")
+		}
+		if _, _, err := s.getRequiredPricing(tenantID, chargeType, modelName); err != nil {
+			return nil, err
+		}
+	}
+
+	if cost > 0 {
+		account, err := s.creditService.GetOrCreateAccount(tenantID, userID)
+		if err != nil {
+			return nil, err
+		}
+		if account.Balance < cost {
+			return nil, fmt.Errorf("积分不足，需要 %d 积分，当前余额 %d", cost, account.Balance)
+		}
+	}
+
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("上游 API 请求失败: %v", err)
@@ -229,11 +256,73 @@ func (s *GenerateService) ProxyRaw(tenantID, userID uint, method, path, contentT
 		return nil, err
 	}
 
+	if resp.StatusCode < 400 && cost > 0 {
+		if err := s.creditService.Spend(0, userID, cost, chargeType, modelName, fmt.Sprintf("生成 %s", chargeType)); err != nil {
+			return nil, err
+		}
+	}
+
+	account, _ := s.creditService.GetOrCreateAccount(tenantID, userID)
+	balance := 0
+	if account != nil {
+		balance = account.Balance
+	}
+
 	return &ProxyResult{
 		StatusCode: resp.StatusCode,
 		Body:       respBytes,
 		Headers:    resp.Header,
+		Cost:       cost,
+		Balance:    balance,
 	}, nil
+}
+
+func (s *GenerateService) getProxyCost(tenantID uint, method, path, contentType string, body []byte, modelName string) (int, string) {
+	if strings.ToUpper(strings.TrimSpace(method)) != http.MethodPost {
+		return 0, ""
+	}
+	chargeType := generationTypeFromPath(path)
+	if chargeType == "" || modelName == "" {
+		return 0, ""
+	}
+	pricing, err := s.creditRepo.FindPricing(tenantID, modelName)
+	if err != nil || pricing == nil || pricing.CreditsPerUnit <= 0 {
+		return 0, chargeType
+	}
+
+	cost := pricing.CreditsPerUnit
+	if pricing.UnitType == model.UnitPerImage {
+		cost *= extractImageCount(contentType, body)
+	}
+	return cost, chargeType
+}
+
+func generationTypeFromPath(path string) string {
+	cleanPath := strings.Split(strings.TrimSpace(path), "?")[0]
+	switch {
+	case strings.HasSuffix(cleanPath, "/images/generations"), strings.HasSuffix(cleanPath, "/images/edits"):
+		return "image"
+	case strings.HasSuffix(cleanPath, "/video/generations"):
+		return "video"
+	case strings.HasSuffix(cleanPath, "/audio/speech"):
+		return "audio"
+	case strings.HasSuffix(cleanPath, "/chat/completions"), strings.HasSuffix(cleanPath, "/responses"):
+		return "text"
+	default:
+		return ""
+	}
+}
+
+func extractImageCount(contentType string, body []byte) int {
+	if strings.HasPrefix(contentType, "application/json") {
+		var data map[string]interface{}
+		if json.Unmarshal(body, &data) == nil {
+			if value, ok := data["n"].(float64); ok && value >= 1 {
+				return int(value)
+			}
+		}
+	}
+	return 1
 }
 
 func buildUpstreamURL(baseURL, path string) string {

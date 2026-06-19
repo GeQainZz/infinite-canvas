@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"errors"
 	"infinite-canvas-server/model"
 
 	"gorm.io/gorm"
@@ -15,10 +16,29 @@ func NewCanvasRepo(db *gorm.DB) *CanvasRepo {
 }
 
 func (r *CanvasRepo) Upsert(project *model.CanvasProject) error {
-	return r.db.
+	var existing model.CanvasProject
+	err := r.db.
 		Where("tenant_id = ? AND user_id = ? AND project_id = ?", project.TenantID, project.UserID, project.ProjectID).
-		Assign(project).
-		FirstOrCreate(project).Error
+		First(&existing).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return r.db.Create(project).Error
+	}
+	if err != nil {
+		return err
+	}
+
+	return r.db.Model(&existing).Updates(map[string]any{
+		"title":           project.Title,
+		"nodes":           project.Nodes,
+		"connections":     project.Connections,
+		"chat_sessions":   project.ChatSessions,
+		"active_chat_id":  project.ActiveChatID,
+		"background_mode": project.BackgroundMode,
+		"show_image_info": project.ShowImageInfo,
+		"viewport_x":      project.ViewportX,
+		"viewport_y":      project.ViewportY,
+		"viewport_k":      project.ViewportK,
+	}).Error
 }
 
 func (r *CanvasRepo) FindByProjectID(tenantID uint, userID uint, projectID string) (*model.CanvasProject, error) {

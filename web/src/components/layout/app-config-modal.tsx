@@ -1,10 +1,11 @@
 "use client";
 
 import { App, Button, Form, Input, Modal, Select, Tabs } from "antd";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { ModelPicker } from "@/components/model-picker";
-import { filterModelsByCapability, modelOptionLabel, normalizeModelOptionValue, useConfigStore, type AiConfig, type ModelCapability } from "@/stores/use-config-store";
+import { getApiModelCatalog } from "@/services/api/api-config";
+import { modelOptionLabel, normalizeModelOptionValue, useConfigStore, type ModelCapability } from "@/stores/use-config-store";
 
 type ModelGroup = {
     capability: ModelCapability;
@@ -16,7 +17,9 @@ type ModelGroup = {
 
 const modelGroups: ModelGroup[] = [
     { capability: "image", modelKey: "imageModel", modelsKey: "imageModels", defaultLabel: "默认生图模型", optionsLabel: "生图模型可选项" },
+    { capability: "video", modelKey: "videoModel", modelsKey: "videoModels", defaultLabel: "默认视频模型", optionsLabel: "视频模型可选项" },
     { capability: "text", modelKey: "textModel", modelsKey: "textModels", defaultLabel: "默认文本模型", optionsLabel: "文本模型可选项" },
+    { capability: "audio", modelKey: "audioModel", modelsKey: "audioModels", defaultLabel: "默认音频模型", optionsLabel: "音频模型可选项" },
 ];
 
 export function AppConfigModal() {
@@ -24,11 +27,36 @@ export function AppConfigModal() {
     const [activeTab, setActiveTab] = useState("preferences");
     const config = useConfigStore((state) => state.config);
     const updateConfig = useConfigStore((state) => state.updateConfig);
+    const applyServerModelCatalog = useConfigStore((state) => state.applyServerModelCatalog);
     const isConfigOpen = useConfigStore((state) => state.isConfigOpen);
     const shouldPromptContinue = useConfigStore((state) => state.shouldPromptContinue);
     const setConfigDialogOpen = useConfigStore((state) => state.setConfigDialogOpen);
     const clearPromptContinue = useConfigStore((state) => state.clearPromptContinue);
     const modelOptions = config.models.map((model) => ({ label: modelOptionLabel(config, model), value: model }));
+
+    useEffect(() => {
+        if (!isConfigOpen) return;
+        let mounted = true;
+        const fetchCatalog = async () => {
+            try {
+                const apiConfig = await getApiModelCatalog();
+                if (!mounted) return;
+                applyServerModelCatalog({
+                    models: apiConfig.models,
+                    imageModels: apiConfig.image_models,
+                    videoModels: apiConfig.video_models,
+                    textModels: apiConfig.text_models,
+                    audioModels: apiConfig.audio_models,
+                });
+            } catch (err: any) {
+                if (mounted) message.error(err?.message || "加载模型列表失败");
+            }
+        };
+        void fetchCatalog();
+        return () => {
+            mounted = false;
+        };
+    }, [applyServerModelCatalog, isConfigOpen, message]);
 
     const finishConfig = () => {
         setConfigDialogOpen(false);
@@ -55,7 +83,7 @@ export function AppConfigModal() {
             title={
                 <div>
                     <div className="text-lg font-semibold">用户偏好设置</div>
-                    <div className="mt-1 text-xs font-normal text-stone-500">模型选择和生成偏好</div>
+                    <div className="mt-1 text-xs font-normal text-stone-500">这里统一管理默认模型和生成偏好</div>
                 </div>
             }
             open={isConfigOpen}
@@ -80,7 +108,7 @@ export function AppConfigModal() {
                             <Form layout="vertical" requiredMark={false}>
                                 <div className="mb-4 rounded-lg border border-stone-200 p-3 dark:border-stone-800">
                                     <div className="text-sm font-semibold">默认模型和可选项</div>
-                                    <div className="mt-1 text-xs leading-5 text-stone-500">可选项决定各处下拉框展示哪些模型；管理员可在后台配置上游 API。</div>
+                                    <div className="mt-1 text-xs leading-5 text-stone-500">这里只显示后台已配置计费的模型；未定价模型不会出现在这里。</div>
                                 </div>
                                 <div className="grid gap-4 md:grid-cols-2">
                                     {modelGroups.map((group) => (
@@ -90,7 +118,7 @@ export function AppConfigModal() {
                                                 showSearch
                                                 allowClear
                                                 maxTagCount="responsive"
-                                                placeholder={config.models.length ? "请选择或输入模型" : "请选择模型"}
+                                                placeholder={config.models.length ? "请选择模型" : "暂无可用模型，请联系管理员配置"}
                                                 value={config[group.modelsKey]}
                                                 options={modelOptions}
                                                 onChange={(models) => updateCapabilityModels(group, models)}

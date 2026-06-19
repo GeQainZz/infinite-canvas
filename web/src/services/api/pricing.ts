@@ -12,6 +12,23 @@ export async function listPricing() {
   return res.data.data as PricingItem[];
 }
 
+export async function listAdminPricing() {
+  const [pricingRes, configRes] = await Promise.all([
+    apiClient.get("/credits/pricing"),
+    apiClient.get("/api-config"),
+  ]);
+  return {
+    pricing: pricingRes.data.data as PricingItem[],
+    apiConfig: configRes.data.data as {
+      models?: string[];
+      image_models?: string[];
+      video_models?: string[];
+      text_models?: string[];
+      audio_models?: string[];
+    },
+  };
+}
+
 export async function savePricing(input: PricingItem) {
   const res = await apiClient.post("/credits/pricing", input);
   return res.data.data as PricingItem;

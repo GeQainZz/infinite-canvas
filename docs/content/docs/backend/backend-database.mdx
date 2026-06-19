@@ -1,30 +1,20 @@
 ---
 title: 后端数据库结构
-description: 多租户积分系统的数据库表结构设计
+description: 当前后端数据库表结构说明
 ---
 
 # 后端数据库结构
-
-## tenants 表
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | uint | 主键 |
-| name | string(100) | 租户名称 |
-| domain | string(200) | 租户域名，唯一 |
-| plan | enum(free/basic/pro/enterprise) | 套餐计划 |
-| status | enum(active/inactive) | 状态 |
 
 ## users 表
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | uint | 主键 |
-| tenant_id | uint | 所属租户 |
-| username | string(64) | 用户名 |
+| tenant_id | uint | 当前固定为默认租户 |
+| username | string(64) | 登录用户名 |
 | password_hash | string(256) | bcrypt 密码哈希 |
 | display_name | string(64) | 显示名称 |
-| avatar_url | string(512) | 头像 URL |
+| avatar_url | string(512) | 头像 |
 | role | enum(super_admin/tenant_admin/user) | 角色 |
 | status | enum(active/inactive) | 状态 |
 
@@ -33,22 +23,22 @@ description: 多租户积分系统的数据库表结构设计
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | uint | 主键 |
-| tenant_id | uint | 所属租户 |
-| user_id | uint | 用户 ID，唯一 |
-| balance | int | 当前余额 |
-| total_earned | int | 累计获得 |
-| total_spent | int | 累计消费 |
+| tenant_id | uint | 租户 ID |
+| user_id | uint | 用户 ID |
+| balance | int | 当前积分余额 |
+| total_earned | int | 累计收入 |
+| total_spent | int | 累计支出 |
 
 ## credit_transactions 表
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | uint | 主键 |
-| account_id | uint | 关联账户 |
-| type | enum(earn/spend/refund/adjust) | 交易类型 |
-| amount | int | 交易金额 |
-| balance_after | int | 交易后余额 |
-| ref_type | string(50) | 关联业务类型 |
+| account_id | uint | 账户 ID |
+| type | enum(earn/spend/refund/adjust) | 流水类型 |
+| amount | int | 变动积分 |
+| balance_after | int | 变动后余额 |
+| ref_type | string(50) | 业务来源，如 image/video/audio/recharge |
 | ref_id | string(100) | 关联业务 ID |
 | note | string(500) | 备注 |
 
@@ -57,7 +47,54 @@ description: 多租户积分系统的数据库表结构设计
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | uint | 主键 |
-| tenant_id | uint | 所属租户 |
-| model | string(100) | AI 模型名称 |
-| credits_per_unit | int | 每次消耗积分 |
+| tenant_id | uint | 租户 ID |
+| model | string(100) | 模型名 |
+| credits_per_unit | int | 单次积分消耗 |
 | unit_type | enum(per_image/per_video/per_token) | 计费单位 |
+
+## tenant_api_configs 表
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | uint | 主键 |
+| tenant_id | uint | 当前固定为默认租户 |
+| base_url | string(500) | 上游 API 地址 |
+| api_key | text | 加密后的上游 API Key |
+| models_json | longtext | 模型目录 JSON |
+
+## canvas_projects 表
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | uint | 主键 |
+| tenant_id | uint | 租户 ID |
+| user_id | uint | 所属用户 |
+| project_id | string(128) | 前端画布 ID |
+| title | string(200) | 画布标题 |
+| data_json | longtext | 画布完整内容 |
+| snapshot_json | longtext | 列表页摘要 |
+
+## generation_records 表
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | uint | 主键 |
+| tenant_id | uint | 租户 ID |
+| user_id | uint | 所属用户 |
+| record_id | string(128) | 前端记录 ID |
+| type | enum(image/video/audio) | 记录类型 |
+| title | string(200) | 标题 |
+| payload_json | longtext | 生成记录完整内容 |
+
+## recharge_orders 表
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | uint | 主键 |
+| tenant_id | uint | 租户 ID |
+| user_id | uint | 用户 ID |
+| order_no | string(64) | 订单号 |
+| credits | int | 充值积分 |
+| amount | decimal | 支付金额 |
+| status | enum(pending/paid/completed/failed) | 订单状态 |
+| note | string(255) | 套餐备注 |

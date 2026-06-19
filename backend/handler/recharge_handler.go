@@ -25,52 +25,7 @@ type CreateOrderInput struct {
 }
 
 func (h *RechargeHandler) CreateOrder(c *gin.Context) {
-	claims := c.MustGet("claims").(*service.Claims)
-	var input CreateOrderInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		model.Fail(c, 400, "无效的请求参数")
-		return
-	}
-
-	payouts := service.GetDefaultPayouts()
-	var chosen *service.CreditPayout
-	for _, p := range payouts {
-		if p.ID == input.PayoutID {
-			chosen = &p
-			break
-		}
-	}
-	if chosen == nil {
-		model.Fail(c, 400, "无效的套餐ID")
-		return
-	}
-
-	order := &model.RechargeOrder{
-		TenantID: claims.TenantID,
-		UserID:   claims.UserID,
-		Amount:   0,
-		Credits:  chosen.Credits,
-		Status:   "pending",
-		Note:     chosen.Name,
-	}
-	if err := h.rechargeRepo.Create(order); err != nil {
-		model.Fail(c, 500, err.Error())
-		return
-	}
-
-	_, paymentRef, err := h.paymentSvc.CreateOrder(order)
-	if err != nil {
-		model.Fail(c, 500, "payment failed: "+err.Error())
-		return
-	}
-
-	if paymentRef != "" {
-		h.rechargeRepo.UpdatePaymentRef(order.ID, paymentRef)
-	}
-
-	// Reload order to get updated status
-	updated, _ := h.rechargeRepo.FindByID(order.ID)
-	model.OK(c, updated)
+	model.Fail(c, 403, "当前暂不开放在线购买，请联系管理员")
 }
 
 func (h *RechargeHandler) ListMyOrders(c *gin.Context) {

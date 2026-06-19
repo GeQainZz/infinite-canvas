@@ -13,10 +13,16 @@ function aiApiUrl(config: AiConfig, path: string) {
 }
 
 function aiHeaders(config: AiConfig) {
-    return {
-        Authorization: `Bearer ${config.apiKey}`,
+    const headers: Record<string, string> = {
         "Content-Type": "application/json",
     };
+    if (isLoggedIn()) {
+        const token = typeof window !== "undefined" ? localStorage.getItem("infinite-canvas:auth_token") : null;
+        if (token) headers.Authorization = `Bearer ${token}`;
+    } else {
+        headers.Authorization = `Bearer ${config.apiKey}`;
+    }
+    return headers;
 }
 
 export async function requestAudioGeneration(config: AiConfig, prompt: string, options?: RequestOptions): Promise<Blob> {
@@ -53,6 +59,7 @@ export async function storeGeneratedAudio(blob: Blob, format = "mp3"): Promise<U
 
 function assertAudioConfig(config: AiConfig, model: string) {
     if (!model) throw new Error("请先配置音频模型");
+    if (isLoggedIn()) return;
     if (!config.baseUrl.trim()) throw new Error("请先配置 Base URL");
     if (!config.apiKey.trim()) throw new Error("请先配置 API Key");
 }

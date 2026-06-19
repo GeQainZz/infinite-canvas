@@ -29,6 +29,7 @@ func main() {
 		&model.CreditAccount{},
 		&model.CreditTransaction{},
 		&model.CreditPricing{},
+		&model.GenerationRecord{},
 		&model.TenantApiConfig{},
 		&model.RechargeOrder{},
 		&model.CanvasProject{},
@@ -42,6 +43,7 @@ func main() {
 	rechargeRepo := repository.NewRechargeRepo(db)
 	apiConfigRepo := repository.NewApiConfigRepo(db)
 	canvasRepo := repository.NewCanvasRepo(db)
+	generationRecordRepo := repository.NewGenerationRecordRepo(db)
 
 	captchaService := service.NewCaptchaService()
 
@@ -56,14 +58,15 @@ func main() {
 	userHandler := handler.NewUserHandler(userService)
 	creditHandler := handler.NewCreditHandler(creditService, creditRepo)
 	generateHandler := handler.NewGenerateHandler(generateService)
-	apiConfigHandler := handler.NewApiConfigHandler(apiConfigRepo, cfg)
+	apiConfigHandler := handler.NewApiConfigHandler(apiConfigRepo, creditRepo, cfg)
 	proxyHandler := handler.NewProxyHandler(generateService)
 	canvasHandler := handler.NewCanvasHandler(canvasRepo)
+	generationRecordHandler := handler.NewGenerationRecordHandler(generationRecordRepo)
 	rechargeHandler := handler.NewRechargeHandler(rechargeRepo, paymentGateway, creditService)
 	captchaHandler := handler.NewCaptchaHandler(captchaService)
 
 	r := gin.Default()
-	router.Setup(r, authService, authHandler, adminHandler, userHandler, creditHandler, generateHandler, apiConfigHandler, proxyHandler, canvasHandler, rechargeHandler, captchaHandler)
+	router.Setup(r, authService, authHandler, adminHandler, userHandler, creditHandler, generateHandler, apiConfigHandler, proxyHandler, canvasHandler, generationRecordHandler, rechargeHandler, captchaHandler)
 
 	log.Printf("Server starting on port %s", cfg.Port)
 	if err := r.Run(":" + cfg.Port); err != nil {

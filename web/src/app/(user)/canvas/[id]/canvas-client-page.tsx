@@ -42,6 +42,7 @@ import { CanvasToolbar } from "../components/canvas-toolbar";
 import { AssetPickerModal, type InsertAssetPayload } from "../components/asset-picker-modal";
 import { CanvasZoomControls } from "../components/canvas-zoom-controls";
 import { useCanvasStore } from "../stores/use-canvas-store";
+import { loadCanvas } from "@/services/api/canvas";
 import { applyCanvasAgentOps, type CanvasAgentOp, type CanvasAgentSnapshot } from "../utils/canvas-agent-ops";
 import { buildCanvasResourceReferences, buildNodeMentionReferences } from "../utils/canvas-resource-references";
 import type { CanvasAgentMode } from "../components/canvas-agent-chat-ui";
@@ -255,6 +256,7 @@ function InfiniteCanvasPage() {
     const cleanupAssetImages = useAssetStore((state) => state.cleanupImages);
     const hydrated = useCanvasStore((state) => state.hydrated);
     const createProject = useCanvasStore((state) => state.createProject);
+    const flushProjectSave = useCanvasStore((state) => state.flushProjectSave);
     const openProject = useCanvasStore((state) => state.openProject);
     const updateProject = useCanvasStore((state) => state.updateProject);
     const renameProject = useCanvasStore((state) => state.renameProject);
@@ -392,13 +394,20 @@ function InfiniteCanvasPage() {
             return;
         }
         setProjectLoaded(false);
-        const project = openProject(projectId);
-        if (!project) {
-            router.replace("/canvas");
-            return;
-        }
-
         const restore = async () => {
+            let project = openProject(projectId);
+            if (!project) {
+                project = await loadCanvas(projectId);
+                if (project) {
+                    useCanvasStore.setState((state) => ({
+                        projects: [project!, ...state.projects.filter((item) => item.id !== projectId)],
+                    }));
+                }
+            }
+            if (!project) {
+                router.replace("/canvas");
+                return;
+            }
             const restoredNodes = await hydrateCanvasImages(resetInterruptedGeneration(project.nodes));
             const restoredSessions = await hydrateAssistantImages(project.chatSessions || []);
             setNodes(restoredNodes);
@@ -456,9 +465,26 @@ function InfiniteCanvasPage() {
     useEffect(
         () => () => {
             if (agentCloseTimerRef.current) clearTimeout(agentCloseTimerRef.current);
+            if (projectId) void flushProjectSave(projectId);
         },
-        [],
+        [flushProjectSave, projectId],
     );
+
+    useEffect(() => {
+        if (!projectId) return;
+        const flushCurrentProject = () => {
+            void flushProjectSave(projectId);
+        };
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === "hidden") flushCurrentProject();
+        };
+        window.addEventListener("pagehide", flushCurrentProject);
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+        return () => {
+            window.removeEventListener("pagehide", flushCurrentProject);
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
+        };
+    }, [flushProjectSave, projectId]);
 
     useEffect(() => {
         if (!projectLoaded || historyPausedRef.current) return;

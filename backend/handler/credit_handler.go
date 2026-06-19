@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"strings"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -64,6 +65,15 @@ func (h *CreditHandler) SavePricing(c *gin.Context) {
 	var pricing model.CreditPricing
 	if err := c.ShouldBindJSON(&pricing); err != nil {
 		model.Fail(c, 400, "无效的请求参数")
+		return
+	}
+	pricing.Model = strings.TrimSpace(pricing.Model)
+	if pricing.Model == "" {
+		model.Fail(c, 400, "模型名称不能为空")
+		return
+	}
+	if pricing.CreditsPerUnit <= 0 {
+		model.Fail(c, 400, "每次消耗积分必须大于 0")
 		return
 	}
 	pricing.TenantID = claims.TenantID
@@ -133,14 +143,14 @@ func (h *CreditHandler) Recharge(c *gin.Context) {
 
 func (h *CreditHandler) EstimateCost(c *gin.Context) {
 	claims := c.MustGet("claims").(*service.Claims)
-	modelName := c.Query("model")
+	modelName := strings.TrimSpace(c.Query("model"))
 	if modelName == "" {
 		model.Fail(c, 400, "请指定模型")
 		return
 	}
 	pricing, err := h.creditRepo.FindPricing(claims.TenantID, modelName)
 	if err != nil {
-		model.OK(c, gin.H{"credits_per_unit": 0, "note": "no pricing configured"})
+		model.Fail(c, 403, "该模型未配置计费，暂不可用")
 		return
 	}
 	model.OK(c, gin.H{

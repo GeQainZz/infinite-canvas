@@ -4,9 +4,9 @@ import type { CanvasProject } from "@/app/(user)/canvas/stores/use-canvas-store"
 type CanvasProjectDTO = {
   project_id: string;
   title: string;
-  nodes: string;
-  connections: string;
-  chat_sessions: string;
+  nodes: unknown;
+  connections: unknown;
+  chat_sessions: unknown;
   active_chat_id: string;
   background_mode: string;
   show_image_info: boolean;
@@ -19,9 +19,16 @@ type CanvasProjectDTO = {
 
 type ApiResult<T> = { code: number; data: T; msg: string };
 
-function safeParse<T>(raw: string, fallback: T): T {
+function safeParse<T>(raw: unknown, fallback: T): T {
   try {
-    return JSON.parse(raw) as T;
+    if (typeof raw !== "string") {
+      return (raw ?? fallback) as T;
+    }
+    const parsed = JSON.parse(raw) as unknown;
+    if (typeof parsed === "string") {
+      return JSON.parse(parsed) as T;
+    }
+    return parsed as T;
   } catch {
     return fallback;
   }
@@ -51,9 +58,9 @@ function projectToSavePayload(project: CanvasProject) {
   return {
     id: project.id,
     title: project.title,
-    nodes: JSON.stringify(project.nodes),
-    connections: JSON.stringify(project.connections),
-    chat_sessions: JSON.stringify(project.chatSessions),
+    nodes: project.nodes,
+    connections: project.connections,
+    chat_sessions: project.chatSessions,
     active_chat_id: project.activeChatId || "",
     background_mode: project.backgroundMode,
     show_image_info: project.showImageInfo,
@@ -72,6 +79,10 @@ export async function loadCanvas(id: string): Promise<CanvasProject | null> {
   const res = await apiClient.get<ApiResult<CanvasProjectDTO | null>>(`/canvas/${id}`);
   const dto = res.data.data;
   return dto ? dtoToProject(dto) : null;
+}
+
+export async function loadCanvasList(): Promise<CanvasProject[]> {
+  return listCanvases();
 }
 
 export async function listCanvases(): Promise<CanvasProject[]> {

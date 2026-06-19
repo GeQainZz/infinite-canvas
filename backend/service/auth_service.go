@@ -95,9 +95,6 @@ func (s *AuthService) Register(input RegisterInput) (*RegisterResult, error) {
 	}
 
 	credits := s.cfg.RegistrationCredits
-	if credits <= 0 {
-		credits = 100
-	}
 	account := &model.CreditAccount{
 		TenantID:    0,
 		UserID:      result.User.ID,

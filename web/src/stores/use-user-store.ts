@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { DEFAULT_CANVAS_SCOPE, useCanvasStore } from "@/app/(user)/canvas/stores/use-canvas-store";
 import type { ApiUser } from "@/services/api/auth";
 import { getMe } from "@/services/api/auth";
 import { clearStoredToken, getStoredToken } from "@/services/api/client";
@@ -30,22 +31,33 @@ function fromApiUser(apiUser: ApiUser): LocalUser {
   };
 }
 
+function resolveCanvasScope(userId?: string) {
+  return userId ? `user:${userId}` : DEFAULT_CANVAS_SCOPE;
+}
+
 export const useUserStore = create<UserStore>()((set) => ({
   user: null,
   loading: false,
   fetchUser: async () => {
-    if (!getStoredToken()) return;
+    if (!getStoredToken()) {
+      await useCanvasStore.getState().setStorageScope(DEFAULT_CANVAS_SCOPE);
+      return;
+    }
     set({ loading: true });
     try {
       const apiUser = await getMe();
-      set({ user: fromApiUser(apiUser), loading: false });
+      const user = fromApiUser(apiUser);
+      set({ user, loading: false });
+      await useCanvasStore.getState().setStorageScope(resolveCanvasScope(user.id));
     } catch {
       clearStoredToken();
       set({ user: null, loading: false });
+      await useCanvasStore.getState().setStorageScope(DEFAULT_CANVAS_SCOPE);
     }
   },
   clearSession: () => {
     clearStoredToken();
     set({ user: null });
+    void useCanvasStore.getState().setStorageScope(DEFAULT_CANVAS_SCOPE);
   },
 }));

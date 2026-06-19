@@ -9,6 +9,7 @@ import { fetchPrompts, type Prompt } from "@/services/api/prompts";
 import { navigationTools } from "@/constant/navigation-tools";
 import { getStoredToken } from "@/services/api/client";
 import { cn } from "@/lib/utils";
+import { useUserStore } from "@/stores/use-user-store";
 
 function Highlighter({ action, color, children }: { action: "highlight" | "underline"; color: string; children: ReactNode }) {
     return (
@@ -92,7 +93,10 @@ function PublicHome() {
 
 export default function IndexPage() {
     const { message } = App.useApp();
-    const [primaryTool] = navigationTools;
+    const user = useUserStore((state) => state.user);
+    const isAdmin = user?.role === "super_admin" || user?.role === "tenant_admin";
+    const visibleTools = navigationTools.filter((tool) => !tool.adminOnly || isAdmin);
+    const [primaryTool] = visibleTools;
     const [promptShowcase, setPromptShowcase] = useState<Prompt[]>([]);
     const [previewIndex, setPreviewIndex] = useState(0);
     const [previewOpen, setPreviewOpen] = useState(false);

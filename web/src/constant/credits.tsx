@@ -1,5 +1,10 @@
-import type { ComponentProps } from "react";
+"use client";
+
+import { useEffect, useMemo, useState, type ComponentProps } from "react";
 import { Zap } from "lucide-react";
+
+import { estimateCost } from "@/services/api/credits";
+import { modelOptionName } from "@/stores/use-config-store";
 
 export function CreditSymbol({ className, ...props }: ComponentProps<"span">) {
     return (
@@ -22,4 +27,57 @@ export function requestCreditCost(options: { channelMode: string; modelCosts?: M
     if (options.channelMode !== "remote") return 0;
     const count = Math.max(1, Math.floor(Math.abs(Number(options.count)) || 1));
     return modelCreditCost(options.modelCosts, options.model) * count;
+}
+
+const CREDIT_BALANCE_EVENT = "infinite-canvas:credits-updated";
+
+export function notifyCreditBalanceChanged() {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new CustomEvent(CREDIT_BALANCE_EVENT));
+}
+
+export function useCreditBalanceRefreshSignal() {
+    const [signal, setSignal] = useState(0);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const handleRefresh = () => setSignal((value) => value + 1);
+        window.addEventListener(CREDIT_BALANCE_EVENT, handleRefresh);
+        return () => window.removeEventListener(CREDIT_BALANCE_EVENT, handleRefresh);
+    }, []);
+
+    return signal;
+}
+
+export function useEstimatedCreditCost(model: string, count?: string | number) {
+    const normalizedModel = useMemo(() => modelOptionName(model || ""), [model]);
+    const normalizedCount = Math.max(1, Math.floor(Math.abs(Number(count)) || 1));
+    const [credits, setCredits] = useState(0);
+
+    useEffect(() => {
+        const token = typeof window !== "undefined" ? window.localStorage.getItem("infinite-canvas:auth_token") : null;
+        if (!token || !normalizedModel) {
+            setCredits(0);
+            return;
+        }
+
+        let cancelled = false;
+        estimateCost(normalizedModel)
+            .then((data) => {
+                if (cancelled) return;
+                const unitCost = Number(data?.credits_per_unit) || 0;
+                const unitType = String(data?.unit_type || "");
+                const multiplier = unitType === "per_image" ? normalizedCount : 1;
+                setCredits(unitCost * multiplier);
+            })
+            .catch(() => {
+                if (!cancelled) setCredits(0);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [normalizedCount, normalizedModel]);
+
+    return credits;
 }

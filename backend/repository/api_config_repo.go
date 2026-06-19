@@ -25,6 +25,11 @@ func (r *ApiConfigRepo) Save(cfg *model.TenantApiConfig) error {
 		if err == nil {
 			existing.BaseUrl = cfg.BaseUrl
 			existing.ApiKey = cfg.ApiKey
+			existing.Models = cfg.Models
+			existing.ImageModels = cfg.ImageModels
+			existing.VideoModels = cfg.VideoModels
+			existing.TextModels = cfg.TextModels
+			existing.AudioModels = cfg.AudioModels
 			return tx.Save(&existing).Error
 		}
 		if err != nil && err != gorm.ErrRecordNotFound {

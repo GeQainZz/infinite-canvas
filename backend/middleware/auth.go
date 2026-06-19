@@ -23,6 +23,8 @@ func AuthRequired(authService *service.AuthService) gin.HandlerFunc {
 			return
 		}
 		c.Set("claims", claims)
+		c.Set("user_id", claims.UserID)
+		c.Set("tenant_id", claims.TenantID)
 		c.Next()
 	}
 }
