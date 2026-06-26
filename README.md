@@ -23,7 +23,8 @@ cd infinite-canvas
 chmod +x scripts/init-env.sh
 ./scripts/init-env.sh
 
-docker compose build
+docker build -t infinite-canvas-app:latest .
+docker compose build backend
 docker compose up -d
 ```
 
@@ -45,3 +46,4 @@ docker compose up -d
 - 生产环境请务必自行设置 `.env` 中的数据库密码、JWT 密钥和 API Key 加密密钥。
 - 不建议将 MySQL 暴露到公网。
 - 当数据库为空且 `.env` 已配置 `INIT_ADMIN_*` 时，后端首次启动会自动创建初始 `super_admin`。
+- 当前 `docker-compose.yml` 会直接使用本地 `infinite-canvas-app:latest` 前端镜像，因此首次部署前需要先执行一次 `docker build -t infinite-canvas-app:latest .`。

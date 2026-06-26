@@ -38,9 +38,16 @@ NEXT_PUBLIC_DOC_URL=https://docs.canvas.best
 启动：
 
 ```bash
-docker compose build
+docker build -t infinite-canvas-app:latest .
+docker compose build backend
 docker compose up -d
 ```
+
+说明：
+
+- 根目录 `Dockerfile` 用于构建前端镜像 `infinite-canvas-app:latest`
+- `docker compose build` 当前只会构建 `backend`
+- 因此新服务器首次部署时，请先手动执行一次前端镜像构建
 
 ## 首次初始化
 
@@ -104,7 +111,8 @@ docker compose up -d --force-recreate backend
 ### 2. 启动空环境
 
 ```bash
-docker compose build
+docker build -t infinite-canvas-app:latest .
+docker compose build backend
 docker compose up -d
 ```
 
@@ -127,6 +135,7 @@ cat infinite_canvas.sql | docker exec -i ic-mysql mysql -uroot -p"${MYSQL_ROOT_P
 ### 5. 重启后端与前端
 
 ```bash
+docker build -t infinite-canvas-app:latest .
 docker compose up -d --force-recreate backend app
 ```
 
